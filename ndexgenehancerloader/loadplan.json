@@ -1,65 +1,54 @@
 {
     "context": {
-        "pubmed": "http://identifiers.org/pubmed/",
-        "chebi": "http://identifiers.org/chebi/CHEBI:",
-        "uniprot": "http://identifiers.org/uniprot/",
-        "cas": "http://identifiers.org/cas/",
-        "kegg.compound": "http://identifiers.org/kegg.compound/",
-        "hprd": "http://identifiers.org/hprd/",
-        "hgnc.symbol": "http://identifiers.org/hgnc.symbol/"
+        "hgnc.symbol": "http://identifiers.org/hgnc.symbol/",
+        "hgnc": "http://identifiers.org/hgnc.symbol/",
+        "ensembl": "http://identifiers.org/ensembl/",
+        "genecards": "https://identifiers.org/genecards/",
+        "pubmed":  "http://identifiers.org/pubmed/"
     },
-    "source_plan":
-    {
-        "rep_column": "PARTICIPANT_A",
-        "node_name_column": "PARTICIPANT_A",
+    "source_plan": {
+        "rep_column": "Enhancer",
+        "node_name_column": "Enhancer",
         "property_columns": [
-             {
-                  "column_name": "UNIFICATION_XREF_A",
-                  "attribute_name": "alias_a",
-                  "delimiter": ";"
-              },
-             {
-                  "column_name": "PARTICIPANT_TYPE_A",
-                  "attribute_name": "PARTICIPANT_TYPE_A"
-              },
-             {
-                  "column_name": "PARTICIPANT_NAME_A",
-                  "attribute_name": "PARTICIPANT_NAME_A"
-              }
+            {
+                "column_name": "Chromosome",
+                "attribute_name": "Chromosome"
+            },
+            {
+                "column_name": "StartLocation",
+                "attribute_name": "StartLocation"
+            },
+            {
+                "column_name": "EndLocation",
+                "attribute_name": "EndLocation"
+            },
+            {
+                "column_name": "EnhancerConfidenceScore",
+                "attribute_name": "EnhancerConfidenceScore"
+            },
+            {
+                "column_name": "EnhancerType",
+                "attribute_name": "type"
+            }
         ]
     },
-    "target_plan":
-    {
-        "rep_column": "PARTICIPANT_B",
-        "node_name_column": "PARTICIPANT_B",
+    "target_plan": {
+        "rep_column": "GeneRep",
+        "node_name_column": "Gene",
         "property_columns": [
-             {
-                  "column_name": "UNIFICATION_XREF_B",
-                  "attribute_name": "alias_b",
-                  "delimiter": ";"
-              },
-             {
-                  "column_name": "PARTICIPANT_TYPE_B",
-                  "attribute_name": "PARTICIPANT_TYPE_B"
-              },
-                          {
-                  "column_name": "PARTICIPANT_NAME_B",
-                  "attribute_name": "PARTICIPANT_NAME_B"
-              }
-
+            {
+                "column_name": "GeneType",
+                "attribute_name": "type"
+            }
         ]
     },
-    "edge_plan":
-    {
-        "default_predicate": "correlation",
-        "predicate_id_column": "INTERACTION_TYPE",
+    "edge_plan": {
+        "default_predicate": "enhances",
         "property_columns": [
-          {
-              "column_name": "INTERACTION_PUBMED_ID",
-              "attribute_name": "citation",
-              "value_prefix": "pubmed",
-              "delimiter": ";"
-          }
+            {
+                "column_name": "GeneEnhancerScore",
+                "attribute_name": "GeneEnhancerScore"
+            }
         ]
     }
 }
