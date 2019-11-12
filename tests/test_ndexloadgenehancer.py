@@ -52,6 +52,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
             'conf': None,
             'loadplan': None,
             'style': None,
+            'styleprofile': None,
             'profile': None,
             'logconf': None,
             'verbose': None,
@@ -78,7 +79,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
         expected_package_dir = os.path.dirname(ndexgenehancerloader.__file__)
         self.assertEqual(actual_package_dir, expected_package_dir)
 
-    def test_get_default_datadir_name(self):
+    def test_get_default_data_dir_name(self):
         actual_datadir = ndexloadgenehancer._get_default_data_dir_name()
         expected_datadir = ndexloadgenehancer.DATA_DIR
         self.assertEqual(actual_datadir, expected_datadir)
@@ -97,6 +98,9 @@ class TestNdexgenehancerloader(unittest.TestCase):
         actual_config = ndexloadgenehancer._get_default_configuration_name()
         expected_config = os.path.join('~/', NDExUtilConfig.CONFIG_FILE)
         self.assertEqual(actual_config, expected_config)
+
+    def test_get_default_profile_name(self):
+        print('test me')
 
     def test_parse_arguments(self):
         desc = """
@@ -122,10 +126,11 @@ class TestNdexgenehancerloader(unittest.TestCase):
         args = []
         expected_default_args = {}
         expected_default_args['datadir'] = 'genehancer_data'
-        expected_default_args['conf'] = '~/.ndexutils.conf'
         expected_default_args['loadplan'] = ndexloadgenehancer._get_default_load_plan_name()
-        expected_default_args['style'] = ndexloadgenehancer._get_default_style_name()
+        expected_default_args['stylefile'] = None
+        expected_default_args['conf'] = ndexloadgenehancer._get_default_configuration_name()
         expected_default_args['profile'] = 'ndexgenehancerloader'
+        expected_default_args['styleprofile'] = None
         expected_default_args['logconf'] = None
         expected_default_args['verbose'] = 0
         expected_default_args['noheader'] = False
@@ -137,14 +142,16 @@ class TestNdexgenehancerloader(unittest.TestCase):
         #Test new args
         args.append('--datadir')
         args.append('new_dir')
-        args.append('--conf')
-        args.append('new_conf')
         args.append('--loadplan')
         args.append('new_load_plan')
-        args.append('--style')
-        args.append('new_style')
+        args.append('--stylefile')
+        args.append('new_style_file')
+        args.append('--conf')
+        args.append('new_conf')
         args.append('--profile')
         args.append('new_profile')
+        args.append('--styleprofile')
+        args.append('new_style_profile')
         args.append('--logconf')
         args.append('new_log_conf')
         args.append('--verbose')
@@ -153,10 +160,11 @@ class TestNdexgenehancerloader(unittest.TestCase):
 
         expected_args = {}
         expected_args['datadir'] = 'new_dir'
-        expected_args['conf'] = 'new_conf'
         expected_args['loadplan'] = 'new_load_plan'
-        expected_args['style'] = 'new_style'
+        expected_args['stylefile'] = 'new_style_file'
+        expected_args['conf'] = 'new_conf'
         expected_args['profile'] = 'new_profile'
+        expected_args['styleprofile'] = 'new_style_profile'
         expected_args['logconf'] = 'new_log_conf'
         expected_args['verbose'] = 1
         expected_args['noheader'] = True
@@ -207,37 +215,55 @@ class TestNdexgenehancerloader(unittest.TestCase):
             logger_level_set = ndexloadgenehancer.logger.getEffectiveLevel()
             self.assertEqual((50 - (10 * verbose_level)), logger_level_set)
 
+    def test__init__(self):
+        print('test me')
+
+    def test_get_path(self):
+        print('test me')
+
     def test_parse_config(self):
-        temp_dir = self._args['datadir']
-        try:
-            p = Param()
-            self._args['profile'] = 'test_conf_section'
-            self._args['conf'] = os.path.join(temp_dir, 'temp.conf')
+        # Set up variables
+        self._args['conf'] = os.path.join(self._args['datadir'], 'temp.conf')
 
-            with open(self._args['conf'], 'w') as f:
-                f.write('[' + self._args['profile'] + ']' + '\n')
-                f.write(NDExUtilConfig.USER + ' = aaa\n')
-                f.write(NDExUtilConfig.PASSWORD + ' = bbb\n')
-                f.write(NDExUtilConfig.SERVER + ' = dev.ndexbio.org\n')
-                f.flush()
-
-            loader = NDExGeneHancerLoader(self._args)
-            loader._parse_config()
-            self.assertEqual('aaa', loader._user)
-            self.assertEqual('bbb', loader._pass)
-            self.assertEqual('dev.ndexbio.org', loader._server)
-        finally:
-            shutil.rmtree(temp_dir)
-
-    def test_get_file_path(self):
+        # Test working config
+        with open(self._args['conf'], 'w') as config:
+            config.write('[' + ndexloadgenehancer._get_default_configuration_name + ']' + '\n')
+            config.write(NDExUtilConfig.USER + ' = test_user\n')
+            config.write(NDExUtilConfig.PASSWORD + '= test_password\n')
+            config.write(NDExUtilConfig.SERVER + ' = test_server\n')
+            config.flush()
+        
         loader = NDExGeneHancerLoader(self._args)
-        actual_file_path = loader._get_file_path('file')
+        loader._parse_config()
+        self.assertEqual('test_user', loader._user)
+        self.assertEqual('test_password', loader._pass)
+        self.assertEqual('test_server', loader._server)
+
+        # Test config that throws exception
+    
+    def test_parse_style_config(self):
+        print('test me')
+
+    def test_get_result_file_path(self):
+        loader = NDExGeneHancerLoader(self._args)
+        actual_file_path = loader._get_result_file_path('file')
         expected_file_path = os.path.join(loader._data_directory, 'file')
         self.assertEqual(actual_file_path, expected_file_path)
     
-    #def test_get_load_plan(self):
+    def test_get_load_plan(self):
+        print('test me')
         
-    #def test_get_template_network(self):
+    def test_get_style_network(self):
+        print('test me')
+
+    def test_get_style_network_from_file(self):
+        print('test me')
+
+    def test_get_style_network_from_uuid(self):
+        print('test me')
+
+    def test_get_server_and_uuid_from_ndex_url(self):
+        print('test me')
 
     def test_get_original_name(self):
         loader = NDExGeneHancerLoader(self._args)
@@ -313,7 +339,8 @@ class TestNdexgenehancerloader(unittest.TestCase):
         for file in non_xl_files:
             self.assertFalse(loader._file_is_xl(file))
 
-    #def test_convert_from_xl_to_csv(self):
+    def test_convert_from_xl_to_csv(self):
+        print('test me')
 
     def test_create_ndex_connection(self):
         loader = NDExGeneHancerLoader(self._args)
@@ -550,8 +577,12 @@ class TestNdexgenehancerloader(unittest.TestCase):
             # Delete files created
             os.remove(test_csv_file_path)
     """
+    def test_get_rep(self):
+        print('test me')
 
-
+    def test_generate_nice_cx_from_csv(self):
+        print('test me')
+        
     #def test_add_network_attributes(self):
 
     #def test_add_network_style(self):

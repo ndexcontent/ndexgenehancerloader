@@ -1,13 +1,10 @@
 {
     "context": {
-        "hgnc.symbol": "http://identifiers.org/hgnc.symbol/",
-        "hgnc": "http://identifiers.org/hgnc.symbol/",
-        "ensembl": "http://identifiers.org/ensembl/",
-        "genecards": "https://identifiers.org/genecards/",
-        "pubmed":  "http://identifiers.org/pubmed/"
+        "p-genecards": "https://previous.genecards.org/cgi-bin/carddisp.pl?gene=",
+        "en-genecards": "https://www.genecards.org/Search/Keyword?queryString="
     },
     "source_plan": {
-        "rep_column": "Enhancer",
+        "rep_column": "EnhancerRep",
         "node_name_column": "Enhancer",
         "property_columns": [
             {
@@ -29,6 +26,10 @@
             {
                 "column_name": "EnhancerType",
                 "attribute_name": "type"
+            },
+            {
+                "column_name": "EnhancerGeneType",
+                "attribute_name": "GeneType"
             }
         ]
     },
@@ -39,6 +40,10 @@
             {
                 "column_name": "GeneType",
                 "attribute_name": "type"
+            },
+            {
+                "column_name": "GeneGeneType",
+                "attribute_name": "GeneType"
             }
         ]
     },
