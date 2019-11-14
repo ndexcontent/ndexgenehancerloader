@@ -21,15 +21,12 @@
             },
             {
                 "column_name": "EnhancerConfidenceScore",
-                "attribute_name": "EnhancerConfidenceScore"
+                "attribute_name": "EnhancerConfidenceScore",
+                "data_type": "double"
             },
             {
                 "column_name": "EnhancerType",
                 "attribute_name": "type"
-            },
-            {
-                "column_name": "EnhancerGeneType",
-                "attribute_name": "GeneType"
             }
         ]
     },
@@ -52,7 +49,8 @@
         "property_columns": [
             {
                 "column_name": "GeneEnhancerScore",
-                "attribute_name": "GeneEnhancerScore"
+                "attribute_name": "GeneEnhancerScore",
+                "data_type": "double"
             }
         ]
     }
