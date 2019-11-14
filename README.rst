@@ -31,7 +31,7 @@ This tool takes GeneHancer data in .xl* or .csv format and performs the followin
 **5\)** The "_intermediary" and "_result" files are deleted from the data directory, unless the user specifies that they should be kept.
 
 Reformating the Data
-~~~~~~~~~~~~~~~~~~~~
+------------
 
 The `original GeneHancer data <https://academic.oup.com/database/article/doi/10.1093/database/bax028/3737828>`_, which is a list of enhancers and the genes that they affect, contains 9 columns. 5 of these columns are used to transform the data into a network in the form of an edge table:
 
