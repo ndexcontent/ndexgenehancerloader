@@ -10,11 +10,8 @@ import mygene
 import os
 import pandas as pd
 import re
-import requests
 import sys
-import urllib
 import xlrd
-import traceback
 
 import ndex2
 from ndex2.client import Ndex2
@@ -59,6 +56,9 @@ UUID = 'uuid'
 """
 Profile element for network UUIDs
 """
+
+RESULT_PREFIX = "_result_"
+INTERMEDIARY_PREFIX = '_intermediary_'
 
 DEFAULT_HEADER = [
     'chrom',
@@ -179,31 +179,34 @@ def _get_default_data_dir_name():
     """
     Gets default data directory
     """
-    return DATA_DIR
+    return _get_path(DATA_DIR)
 
 def _get_default_load_plan_name():
     """
     Gets load plan stored with this package
     """
-    return os.path.join(get_package_dir(), LOAD_PLAN)
+    return _get_path(os.path.join(get_package_dir(), LOAD_PLAN))
 
 def _get_default_style_file_name():
     """
     Gets style network name
     """
-    return os.path.join(get_package_dir(), STYLE_FILE)
+    return _get_path(os.path.join(get_package_dir(), STYLE_FILE))
 
 def _get_default_configuration_name():
     """
     Gets default configuration file
     """
-    return os.path.join('~/', NDExUtilConfig.CONFIG_FILE)
+    return _get_path(os.path.join('~/', NDExUtilConfig.CONFIG_FILE))
 
 def _get_default_profile_name():
     return PROFILE
 
 def _get_default_gene_types_name():
-    return os.path.join(get_package_dir(), GENE_TYPES)
+    return _get_path(os.path.join(get_package_dir(), GENE_TYPES))
+
+def _get_path(file):
+        return os.path.realpath(os.path.expanduser(file))
 
 def _parse_arguments(desc, args):
     """
@@ -285,7 +288,7 @@ def _parse_arguments(desc, args):
         '--nocleanup', 
         action='store_true', 
         default=False,
-        help='If set, intermediary files generated in the data director will '
+        help='If set, intermediary files generated in the data directory will '
              'not be removed')
     parser.add_argument(
         '--nogenetype',
@@ -310,7 +313,7 @@ def _setup_logging(args):
     """
 
     if args.logconf is None:
-        level = (50 - (10 * args.verbose))
+        level = (50 - (10 * args.verbose))        
         logging.basicConfig(format=LOG_FORMAT, level=level)
         logging.getLogger(TSV2NICECXMODULE).setLevel(level)
         logger.setLevel(level)
@@ -355,16 +358,13 @@ class NDExGeneHancerLoader(object):
         self._network_summaries = None
         self._internal_gene_types = None
 
-    def _get_path(self, file):
-        return os.path.abspath(os.path.realpath(os.path.expanduser(file)))
-
     def _parse_config(self):
         """
         Parses config
         :return:
         """
         try:
-            ncon = NDExUtilConfig(conf_file=os.path.expanduser(self._conf_file))
+            ncon = NDExUtilConfig(conf_file=self._conf_file)
             con = ncon.get_config()
             self._user = con.get(self._profile, NDExUtilConfig.USER)
             self._pass = con.get(self._profile, NDExUtilConfig.PASSWORD)
@@ -372,7 +372,6 @@ class NDExGeneHancerLoader(object):
         except Exception as e:
             print(e)
             raise
-    
         if self._style_file is None and self._style_profile is not None:
             self._parse_style_config()
 
@@ -385,6 +384,7 @@ class NDExGeneHancerLoader(object):
             self._style_profile = None
             print(e)
             print("Default style template network (style.cx) will be used instead")
+            return
         try:
             self._style_server = con.get(self._style_profile, NDExUtilConfig.SERVER)
         except Exception as e:
@@ -399,7 +399,7 @@ class NDExGeneHancerLoader(object):
             print(e)
 
     def _get_file_path(self, file_name):
-        return self._data_directory + "/" + file_name
+        return _get_path(os.path.join(self._data_directory, file_name))
 
     def _get_load_plan(self):
         with open(self._load_plan_file, 'r') as lp:
@@ -408,8 +408,8 @@ class NDExGeneHancerLoader(object):
 
     def _get_gene_types(self):
         try:
-            with open(self._gene_types_file, 'r') as lp:
-                types = json.load(lp)
+            with open(self._gene_types_file, 'r') as gt:
+                types = json.load(gt)
                 self._gene_types = types
         except Exception as e:
             print(e)
@@ -417,29 +417,22 @@ class NDExGeneHancerLoader(object):
     def _get_style_network(self):
         if self._style_file is None:
             if self._style_profile is not None:
-                return self._get_style_network_from_uuid()
+                self._get_style_network_from_uuid()
+                return
             else:
                 self._style_file = _get_default_style_file_name()
-        return self._get_style_network_from_file()
+        self._get_style_network_from_file()
 
     def _get_style_network_from_file(self):
-        if self._style_network is None:
-            self._style_network = ndex2.create_nice_cx_from_file(self._style_file)
-        return self._style_network
-
+        self._style_network = ndex2.create_nice_cx_from_file(self._style_file)
+        
     def _get_style_network_from_uuid(self):
-        if self._style_network is None:
-            self._style_network = ndex2.create_nice_cx_from_server(
-                self._style_server if self._style_server is not None else self._server,
-                username = self._style_user if self._style_user is not None else self._user,
-                password = self._style_pass if self._style_pass is not None else self._pass,
-                uuid = self._style_uuid
-            )
-        return self._style_network
-
-    def _get_server_and_uuid_from_ndex_url(self, url):
-        splitUrl = url.split('#/network/')
-        return splitUrl[0], splitUrl[1]
+        self._style_network = ndex2.create_nice_cx_from_server(
+            self._style_server if self._style_server is not None else self._server,
+            username = self._style_user if self._style_user is not None else self._user,
+            password = self._style_pass if self._style_pass is not None else self._pass,
+            uuid = self._style_uuid
+        )
 
     def _get_original_name(self, file_name):
         reverse_string = file_name[::-1]
@@ -466,7 +459,7 @@ class NDExGeneHancerLoader(object):
         workbook = xlrd.open_workbook(file_path)
         sheet = workbook.sheet_by_index(0)
 
-        new_csv_file_path = self._get_file_path("_intermediate" + original_name + ".csv")
+        new_csv_file_path = self._get_file_path(INTERMEDIARY_PREFIX + original_name + ".csv")
         new_csv_file = open(new_csv_file_path, 'w')
         wr = csv.writer(new_csv_file, quoting=csv.QUOTE_ALL)
 
@@ -515,7 +508,7 @@ class NDExGeneHancerLoader(object):
         if self._internal_gene_types is None:
             self._internal_gene_types = {}
         try:
-            result_csv_file_path = self._get_file_path("_result" + original_name + ".csv")
+            result_csv_file_path = self._get_file_path(RESULT_PREFIX + original_name + ".csv")
 
             with open(csv_file_path, 'r') as read_file:
                 reader = csv.reader(read_file, delimiter=',')
@@ -574,7 +567,7 @@ class NDExGeneHancerLoader(object):
                                 ])
             return result_csv_file_path
         except Exception as e:
-            print(traceback.format_exc())
+            print(e)
 
     def _get_gene_type(self, gene_name):
         # Match known genes
@@ -613,7 +606,7 @@ class NDExGeneHancerLoader(object):
         if gene_info is not None:
             for entry in gene_info['hits']:
                 try:
-                    gene_type = self._map_gene_type(entry['type_of_gene'], gene_name)
+                    gene_type = self._map_gene_type(entry['type_of_gene'])
                     if gene_type is not None:
                         return gene_type
                 except KeyError:
@@ -622,21 +615,18 @@ class NDExGeneHancerLoader(object):
             for entry in gene_info['hits']:
                 try:
                     ensembl_info = entry['ensembl']
-                    gene_type = self._map_gene_type(ensembl_info['type_of_gene'], gene_name)
+                    gene_type = self._map_gene_type(ensembl_info['type_of_gene'])
                     if gene_type is not None:
                         return gene_type
                 except KeyError:
                     pass
         return None
 
-    def _map_gene_type(self, original_gene_type, gene_name):
-        try:
-            for key in TYPE_OF_GENE_TO_GENE_TYPE_MAP:
-                for regex in TYPE_OF_GENE_TO_GENE_TYPE_MAP[key]:
-                    if re.match(regex, original_gene_type):
-                        return key
-        except KeyError:
-            print('key error')
+    def _map_gene_type(self, original_gene_type):
+        for key in TYPE_OF_GENE_TO_GENE_TYPE_MAP:
+            for regex in TYPE_OF_GENE_TO_GENE_TYPE_MAP[key]:
+                if re.match(regex, original_gene_type):
+                    return key
 
         return None
 
@@ -686,13 +676,16 @@ class NDExGeneHancerLoader(object):
         )
 
     def _add_network_style(self, network):
+        if self._style_network is None:
+            self._get_style_network()
         try:
-            network.apply_style_from_network(self._get_style_network())
+            network.apply_style_from_network(self._style_network)
         except Exception as e:
+            print('Error while applying network style')
             print(e)
         
     def _write_cx_to_file(self, network, original_name):
-        cx_file_path = self._get_file_path("_result" + original_name + ".cx")
+        cx_file_path = self._get_file_path(RESULT_PREFIX + original_name + ".cx")
         with open(cx_file_path, 'w') as f:
             json.dump(network.to_cx(), f, indent=4)
         return cx_file_path
@@ -702,7 +695,7 @@ class NDExGeneHancerLoader(object):
         with open(cx_file_path, 'rb') as network_out:
             try:
                 if network_UUID is None:
-                    print('\n{} - started uploading "{}" on {} for user {}...'.
+                    print('{} - started uploading "{}" on {} for user {}...'.
                           format(str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                                  original_name, 
                                  self._server, 
@@ -714,7 +707,7 @@ class NDExGeneHancerLoader(object):
                                  self._server, 
                                  self._user))
                 else :
-                    print('\n{} - started updating "{}" on {} for user {}...'.
+                    print('{} - started updating "{}" on {} for user {}...'.
                           format(str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), 
                                  original_name,
                                  self._server, 
@@ -765,8 +758,8 @@ class NDExGeneHancerLoader(object):
             else:
                 for file_name in os.listdir(self._data_directory):
                     # Skip files that result from this process
-                    if (file_name.startswith("_result") or 
-                        file_name.startswith("_intermediate")):
+                    if (file_name.startswith(RESULT_PREFIX) or 
+                        file_name.startswith(INTERMEDIARY_PREFIX)):
                         continue
 
                     print('\n{} - started processing "{}"...'.
@@ -793,7 +786,9 @@ class NDExGeneHancerLoader(object):
                     cx_file_path = self._write_cx_to_file(network, original_name)
                     
                     # Upload network
-                    self._upload_cx(cx_file_path, original_name)
+                    return_value = self._upload_cx(cx_file_path, original_name)
+                    if return_value == 2:
+                        continue # Skip cleanup
 
                     #Clean up directory
                     if not self._no_cleanup:
@@ -803,7 +798,7 @@ class NDExGeneHancerLoader(object):
                         os.remove(cx_file_path)
             return 0          
         except Exception as e:
-            print(traceback.format_exc())
+            print(e)
 
 def main(args):
     """
@@ -814,15 +809,15 @@ def main(args):
     desc = """
     Version {version}
 
-    Loads NDEx GeneHancer Content Loader data into NDEx (http://ndexbio.org).
+    Loads GeneHancer data into NDEx (http://ndexbio.org).
     
     To connect to NDEx server a configuration file must be passed
-    into --conf parameter. If --conf is unset the configuration 
-    the path ~/{confname} is examined. 
+    into --conf parameter. If --conf is unset, then ~/{confname} 
+    is examined. 
          
     The configuration file should be formatted as follows:
          
-    [<value in --profile (default ncipid)>]
+    [<value in --profile (default ndexgenehancerloader)>]
          
     {user} = <NDEx username>
     {password} = <NDEx password>
