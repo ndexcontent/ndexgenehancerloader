@@ -160,6 +160,12 @@ This example assumes that there is a valid configuration file at :code:`~/.ndexu
 .. code-block::
 
    ndexloadgenehancer.py
+   
+This example will update the network at the uuid <uuid> with the new version number <version number>, using the data in the directory <data directory>. It will do this without changing the visibility of the network, the uuid, or any network attributes besides the version number (and the title, if the title contains the version number).
+
+.. code-block::
+    
+    ndexloadgenehancer.py --datadir <data directory> --update <uuid> --version <version number>
 
 
 Credits
