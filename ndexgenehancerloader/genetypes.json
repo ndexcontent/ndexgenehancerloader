@@ -43,5 +43,12 @@
     "MGC20647": "Protein coding gene",
     "ENSG00000260114": "ncRNA gene",
     "ENSG00000283179": "Protein coding gene",
-    "ENSG00000260603": "ncRNA gene"
+    "ENSG00000260603": "ncRNA gene",
+    "SNORD3P4": "Other gene",
+    "SNORD3P2": "Other gene",
+    "SNORD3P1": "Other gene",
+    "SNORD116@": "Other gene",
+    "SNORD13P1": "Other gene",
+    "SNORD13P2": "Other gene",
+    "SNORD13P3": "Other gene"
 }

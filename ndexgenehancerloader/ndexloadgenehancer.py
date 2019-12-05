@@ -12,6 +12,8 @@ import pandas as pd
 import re
 import sys
 import xlrd
+import traceback
+from copy import deepcopy
 
 import ndex2
 from ndex2.client import Ndex2
@@ -47,6 +49,11 @@ GENE_TYPES = 'genetypes.json'
 Default name of gene type file
 """
 
+NETWORK_ATTRIBUTES = 'networkattributes.json'
+"""
+Default network attributes file name
+"""
+
 PROFILE = 'ndexgenehancerloader'
 """
 Default profile name
@@ -57,8 +64,12 @@ UUID = 'uuid'
 Profile element for network UUIDs
 """
 
-RESULT_PREFIX = "_result_"
+RESULT_PREFIX = '_result_'
 INTERMEDIARY_PREFIX = '_intermediary_'
+GENE_TYPES_PREFIX = '_genetypes_'
+"""
+Prefixes
+"""
 
 DEFAULT_HEADER = [
     'chrom',
@@ -80,23 +91,11 @@ OUTPUT_HEADER = [
     "EndLocation",
     "EnhancerConfidenceScore",
     "EnhancerType",
-    "EnhancerGeneType",
     "Gene",
     "GeneRep",
     "GeneEnhancerScore",
     "GeneType",
     "GeneGeneType"
-]
-
-GENEHANCER_URL = 'https://www.genecards.org/GeneHancer_version_4-4'
-"""
-Url that data is downloaded from
-"""
-
-GENEHANCER_IDS_THAT_DONT_EXIST = [
-    'LOC105377711',
-    'GH02F070017',
-    'ENSG00000252213'
 ]
 
 P_GENECARDS = 'p-genecards:'
@@ -111,44 +110,11 @@ GENE = 'gene'
 Node type constants
 """
 
-NETWORK_DESCRIPTION_ATTRIBUTE = 'description'
-NETWORK_REFERENCE_ATTRIBUTE = 'reference'
-NETWORK_TYPE_ATTRIBUTE = 'networkType'
-NETWORK_ICON_URL_ATTRIBUTE = '__iconurl'
-NETWORK_GENERATED_BY_ATTRIBUTE = 'prov:wasGeneratedBy'
-NETWORK_DERIVED_FROM_ATTRIBUTE = 'prov:wasDerivedFrom'
-"""
-Network attribute name constants
-"""
-
-LIST_OF_STRING = 'list_of_string'
+ATTRIBUTE = 'attribute'
+TYPE = 'type'
+STRING = 'string'
 """
 Network attribute type constants
-"""
-
-NETWORK_DESCRIPTION = """
-    GeneHancer dataset {network_name} uploaded as a cytoscape network.
-    """
-NETWORK_REFERENCE = """
-    Fishilevich S, Nudel R, Rappaport N, et al. GeneHancer: genome-wide 
-    integration of enhancers and target genes in GeneCards. 
-    <em>Database (Oxford).</em> 2017;2017:bax028. 
-    <a href=http://doi.org/10.1093/database/bax028 
-    target="_blank">doi:10.1093/database/bax028</a>
-    """
-NETWORK_TYPE = ["interactome", "geneassociation"]
-NETWORK_ICON_URL = 'https://www.genecards.org/Images/Companions/Logo_GH.png'
-NETWORK_GENERATED_BY = """
-    <a href="https://github.com/ndexcontent/ndexgenehancerloader"
-    target="_blank">ndexgenehancerloader {version} </a>
-    """
-NETWORK_DERIVED_FROM = ('<a href="' + 
-                        GENEHANCER_URL + 
-                        '" target="_blank">' + 
-                        GENEHANCER_URL + 
-                        '</a>') 
-"""
-Network attributes
 """
 
 TYPE_OF_GENE_TO_GENE_TYPE_MAP = {
@@ -193,6 +159,12 @@ def _get_default_style_file_name():
     """
     return _get_path(os.path.join(get_package_dir(), STYLE_FILE))
 
+def _get_default_network_attributes_name():
+    """
+    Gets network attributes file name
+    """
+    return _get_path(os.path.join(get_package_dir(), NETWORK_ATTRIBUTES))
+
 def _get_default_configuration_name():
     """
     Gets default configuration file
@@ -206,7 +178,7 @@ def _get_default_gene_types_name():
     return _get_path(os.path.join(get_package_dir(), GENE_TYPES))
 
 def _get_path(file):
-        return os.path.realpath(os.path.expanduser(file))
+    return os.path.realpath(os.path.expanduser(file))
 
 def _parse_arguments(desc, args):
     """
@@ -223,6 +195,18 @@ def _parse_arguments(desc, args):
         default=_get_default_data_dir_name(),
         help='Directory that GeneHancer data is found and processed in '
              '(default ' + DATA_DIR + ')')
+    parser.add_argument(
+        '--updateuuid',
+        '--update',
+        default=None,
+        help='The UUID of the network that is going to be updated. None of the '
+             'network\'s properties or style will be affected.'
+    )
+    parser.add_argument(
+        '--versionnumber',
+        '--version',
+        help='Version number of the network'
+    )
     parser.add_argument(
         '--loadplan', 
         default=_get_default_load_plan_name(),
@@ -255,12 +239,22 @@ def _parse_arguments(desc, args):
              'uuid = <UUID of template network>'
              ''
              'If --styleprofile and --stylefile are both used, --stylefile will'
-             'take precedence')
+             ' take precedence')
     parser.add_argument(
         '--genetypes',
         default=_get_default_gene_types_name(),
         help='Json file that will be used to determine the types of genes.'
              '(default ' + GENE_TYPES + ')'
+    )
+    parser.add_argument(
+        '--networkattributes',
+        default=_get_default_network_attributes_name(),
+        help='Json file containing the network\'s attributes.'
+    )
+    parser.add_argument(
+        '--delimiter',
+        default=None,
+        help='Delimiter of the data file. (For tab enter the following: $\'\t\')'
     )
     parser.add_argument(
         '--logconf', 
@@ -290,13 +284,6 @@ def _parse_arguments(desc, args):
         default=False,
         help='If set, intermediary files generated in the data directory will '
              'not be removed')
-    parser.add_argument(
-        '--nogenetype',
-        action='store_true',
-        default=False,
-        help='If set, gene types for each gene will not be fetched, and network'
-             'processing will take several minutes instead of hours'
-    )
 
     return parser.parse_args(args)
 
@@ -330,18 +317,22 @@ class NDExGeneHancerLoader(object):
         """
         :param args:
         """
-        self._data_directory = os.path.abspath(args.datadir)
+        self._data_directory = _get_path(args.datadir)
         self._conf_file = args.conf
         self._load_plan_file = args.loadplan
         self._style_file = args.stylefile
         self._gene_types_file = args.genetypes
+        self._network_attributes_file = args.networkattributes
         self._no_header = args.noheader
         self._no_cleanup = args.nocleanup
-        self._no_gene_type = args.nogenetype
 
+        self._delimiter = args.delimiter
+        self._version = args.versionnumber
+        
         self._style_network = None
         self._gene_types = None
         self._load_plan = None
+        self._network_attributes = None
 
         self._profile = args.profile
         self._user = None
@@ -355,8 +346,17 @@ class NDExGeneHancerLoader(object):
         self._style_uuid = None
 
         self._ndex = None
-        self._network_summaries = None
         self._internal_gene_types = None
+
+        self._update_uuid = args.updateuuid
+
+        if self._version is not None and self._update_uuid is None:
+            print("Warning: setting --version won't have any effect if "
+                  "--updateuuid is not also set. If you are uploading a new "
+                  "network (ie not updating) and would like to set a version "
+                  "number, you can specify the \"version\" attribute in a "
+                  "network attributes file which is passed in to "
+                  "--networkattributes")
 
     def _parse_config(self):
         """
@@ -383,7 +383,8 @@ class NDExGeneHancerLoader(object):
         except Exception as e:
             self._style_profile = None
             print(e)
-            print("Default style template network (style.cx) will be used instead")
+            print("Error while parsing configuration file for style. "
+                  "Default style template network (style.cx) will be used instead")
             return
         try:
             self._style_server = con.get(self._style_profile, NDExUtilConfig.SERVER)
@@ -397,24 +398,85 @@ class NDExGeneHancerLoader(object):
             self._style_pass = con.get(self._style_profile, NDExUtilConfig.PASSWORD)
         except Exception as e:
             print(e)
+    
+    def _find_delimiter(self, file_name):
+        if self._delimiter is None:
+            if file_name.split('.')[-1] == 'tsv':
+                self._delimiter = '\t'
+            else:
+                self._delimiter = ','
 
     def _get_file_path(self, file_name):
         return _get_path(os.path.join(self._data_directory, file_name))
 
     def _get_load_plan(self):
-        with open(self._load_plan_file, 'r') as lp:
-            plan = json.load(lp)
-        self._load_plan = plan
+        try:
+            with open(self._load_plan_file, 'r') as lp:
+                self._load_plan = json.load(lp)
+        except Exception as e:
+            print(e)
+            print("Error while loading load plan. "
+                  "Default load plan will be used instead.")
+            with open(_get_default_load_plan_name(), 'r') as lp:
+                self._load_plan = json.load(lp)
 
     def _get_gene_types(self):
         try:
             with open(self._gene_types_file, 'r') as gt:
-                types = json.load(gt)
-                self._gene_types = types
+                self._gene_types = json.load(gt)
         except Exception as e:
             print(e)
+            print("Error while loading gene types. "
+                  "Default gene types will be used instead.")
+            with open(_get_default_gene_types_name(), 'r') as gt:
+                self._gene_types = json.load(gt)
+
+    def _get_network_attributes(self):
+        if self._update_uuid is None:
+            self._get_network_attributes_from_file()
+        else:
+            self._get_network_attributes_from_uuid()
+
+    def _get_network_attributes_from_file(self):
+        try:
+            with open(self._network_attributes_file, 'r') as na:
+                self._network_attributes = json.load(na)
+        except Exception as e:
+            print(e)
+            print("Error while loading network attributes. "
+                  "Default network attributes will be used instead.")
+            with open(_get_default_network_attributes_name(), 'r') as na:
+                self._network_attributes = json.load(na)
+
+    def _get_network_attributes_from_uuid(self):
+        response = self._ndex.get_network_as_cx_stream(self._update_uuid)
+        network = ndex2.create_nice_cx_from_raw_cx(response.json())
+        names = network.get_network_attribute_names()
+        network_attributes = {}
+        for name in names:
+            attribute = network.get_network_attribute(name)
+            network_attributes[name] = {
+                "attribute": attribute['v'],
+                "type": attribute['d'] if 'd' in attribute else STRING
+            }
+        if self._version is not None:
+            if 'version' in network_attributes:
+                old_version = deepcopy(network_attributes['version']['attribute'])
+                network_attributes['version']['attribute'] = self._version
+                if 'name' in network_attributes:
+                    network_attributes['name']['attribute'] = (
+                        network_attributes['name']['attribute']
+                            .replace(str(old_version), str(self._version)))
+        self._network_attributes = network_attributes
 
     def _get_style_network(self):
+        if self._update_uuid is not None:
+            self._style_server = self._server
+            self._style_user = self._user
+            self._style_pass = self._pass
+            self._style_uuid = self._update_uuid
+            self._get_style_network_from_uuid()
+            return
         if self._style_file is None:
             if self._style_profile is not None:
                 self._get_style_network_from_uuid()
@@ -424,15 +486,35 @@ class NDExGeneHancerLoader(object):
         self._get_style_network_from_file()
 
     def _get_style_network_from_file(self):
-        self._style_network = ndex2.create_nice_cx_from_file(self._style_file)
+        try:
+            self._style_network = ndex2.create_nice_cx_from_file(self._style_file)
+        except Exception as e:
+            print(e)
+            print("Error while loading style network from file. "
+                  "Default style network will be used instead.")
+            try:
+                self._style_network = ndex2.create_nice_cx_from_file(
+                    _get_default_style_file_name())
+            except Exception as e:
+                print(e)
+                print("Error while loading default style network from file. "
+                      "No style will be applied.")
         
     def _get_style_network_from_uuid(self):
-        self._style_network = ndex2.create_nice_cx_from_server(
-            self._style_server if self._style_server is not None else self._server,
-            username = self._style_user if self._style_user is not None else self._user,
-            password = self._style_pass if self._style_pass is not None else self._pass,
-            uuid = self._style_uuid
-        )
+        try:
+            self._style_network = ndex2.create_nice_cx_from_server(
+                self._style_server if self._style_server is not None else self._server,
+                username = self._style_user if self._style_user is not None else self._user,
+                password = self._style_pass if self._style_pass is not None else self._pass,
+                uuid = self._style_uuid
+            )
+        except Exception as e:
+            print(e)
+            print("Error while loading style network from NDEx. "
+                  "Default style network will be used instead.")
+            self._style_file = _get_default_style_file_name()
+            self._get_style_network_from_file()
+
 
     def _get_original_name(self, file_name):
         reverse_string = file_name[::-1]
@@ -449,9 +531,8 @@ class NDExGeneHancerLoader(object):
         return os.path.exists(self._data_directory)
 
     def _file_is_xl(self, file_name):
-        reverse_string = file_name[::-1]
-        index = reverse_string.find('.')
-        if reverse_string[index-2 : index] == 'lx':
+        extension = file_name.split(".")[-1]
+        if extension[0:2] == 'xl':
             return True
         return False
 
@@ -467,6 +548,7 @@ class NDExGeneHancerLoader(object):
             wr.writerow(sheet.row_values(row_num))
 
         new_csv_file.close()
+        self._delimiter = ','
         return new_csv_file_path
 
     def _create_ndex_connection(self):
@@ -474,33 +556,10 @@ class NDExGeneHancerLoader(object):
         creates connection to ndex
         """
         if self._ndex is None:
-            try:
-                self._ndex = Ndex2(host=self._server, 
-                                   username=self._user, 
-                                   password=self._pass)
-            except Exception as e:
-                print(e)
-                self._ndex = None
+            self._ndex = Ndex2(host=self._server, 
+                               username=self._user, 
+                               password=self._pass)
         return self._ndex
-
-    def _load_network_summaries_for_user(self):
-        """
-        Gets a dictionary of all networks for user account
-        <network name upper cased> => <NDEx UUID>
-        :return: 0 if success, 2 otherwise
-        """
-        self._network_summaries = {}
-        try:
-            network_summaries = self._ndex.get_network_summaries_for_user(self._user)
-        except Exception as e:
-            print(e)
-            return 2
-
-        for summary in network_summaries:
-            if summary.get('name') is not None:
-                self._network_summaries[summary.get('name').upper()] = summary.get('externalId')
-
-        return 0
 
     def _reformat_csv_file(self, csv_file_path, original_name):
         if self._gene_types is None:
@@ -510,63 +569,60 @@ class NDExGeneHancerLoader(object):
         try:
             result_csv_file_path = self._get_file_path(RESULT_PREFIX + original_name + ".csv")
 
-            with open(csv_file_path, 'r') as read_file:
-                reader = csv.reader(read_file, delimiter=',')
+            with open(csv_file_path, 'r', encoding='utf-8-sig') as read_file:
+                reader = csv.reader(read_file, delimiter=self._delimiter)
                 with open(result_csv_file_path, 'w') as write_file:
                     writer = csv.writer(write_file)
                     writer.writerow(self._get_output_header())
 
                     for i, line in enumerate(reader):
-                        if (i == 0):
-                            if (self._no_header is True):
-                                header = line
-                            else:
+                        if i == 0:
+                            if self._no_header:
                                 header = self._get_default_header()
-                        else:
-                            if i % 100 == 0:
-                                print(i)
-                            attributes = line[header.index('attributes')].split(";")
-
-                            #Find enhancer attributes
-                            enhancer_id = attributes[0].split("=")[1]
-                            enhancer_rep = self._get_rep(enhancer_id)
-                            enhancer_chrom = line[header.index('chrom')]
-                            enhancer_start = line[header.index('start')]
-                            enhancer_end = line[header.index('end')]
-                            enhancer_confidence_score = line[header.index('score')]
-                            enhancer_gene_type = ''
-
-                            #Take care of trailing semi-colons
-                            if len(attributes) % 2 == 0:
-                                iRange = len(attributes) - 1
                             else:
-                                iRange = len(attributes)
-                    
-                            #Find genes
-                            for i in range(1, iRange, 2):
-                                gene_name = attributes[i].split("=")[1]
-                                gene_rep = self._get_rep(gene_name)
-                                gene_enhancer_score = attributes[i+1].split("=")[1]
-                                gene_gene_type = ''
-                                if not self._no_gene_type:
-                                    gene_gene_type = self._get_gene_type(gene_name)
-                                writer.writerow([
-                                    enhancer_id,
-                                    enhancer_rep,
-                                    enhancer_chrom,
-                                    enhancer_start,
-                                    enhancer_end,
-                                    enhancer_confidence_score,
-                                    ENHANCER,
-                                    enhancer_gene_type,
-                                    gene_name,
-                                    gene_rep,
-                                    gene_enhancer_score,
-                                    GENE,
-                                    gene_gene_type
-                                ])
+                                header = line
+                                continue
+                        elif i % 100 == 0:
+                            print("Processing row " + str(i))
+                        attributes = line[header.index('attributes')].split(";")
+
+                        #Find enhancer attributes
+                        enhancer_id = attributes[0].split("=")[1]
+                        enhancer_rep = self._get_rep(enhancer_id)
+                        enhancer_chrom = line[header.index('chrom')]
+                        enhancer_start = line[header.index('start')]
+                        enhancer_end = line[header.index('end')]
+                        enhancer_confidence_score = line[header.index('score')]
+
+                        #Take care of trailing semi-colons
+                        if len(attributes) % 2 == 0:
+                            iRange = len(attributes) - 1
+                        else:
+                            iRange = len(attributes)
+                
+                        #Find genes
+                        for i in range(1, iRange, 2):
+                            gene_name = attributes[i].split("=")[1]
+                            gene_rep = self._get_rep(gene_name)
+                            gene_enhancer_score = attributes[i+1].split("=")[1]
+                            gene_gene_type = self._get_gene_type(gene_name)
+                            writer.writerow([
+                                enhancer_id,
+                                enhancer_rep,
+                                enhancer_chrom,
+                                enhancer_start,
+                                enhancer_end,
+                                enhancer_confidence_score,
+                                ENHANCER,
+                                gene_name,
+                                gene_rep,
+                                gene_enhancer_score,
+                                GENE,
+                                gene_gene_type
+                            ])
             return result_csv_file_path
         except Exception as e:
+            print(traceback.format_exc())
             print(e)
 
     def _get_gene_type(self, gene_name):
@@ -579,19 +635,27 @@ class NDExGeneHancerLoader(object):
         gene_type = None
 
         # Match known types
-        if (re.match('^LINC[0-9]+$', gene_name) or
-            re.match('^LOC[0-9]+$', gene_name) or
+        if (re.match('^LINC[0-9-]+$', gene_name) or
+            re.match('^LOC[0-9-]+$', gene_name) or
             re.match('^GC([0-9]+|MT)[A-Z]+[0-9]+', gene_name)):
             gene_type = "ncRNA gene"
 
         # Use mygene.info
         else:
-            potential_gene_type = self._get_gene_type_from_gene_info(gene_name)
-            if potential_gene_type is not None:
-                gene_type = potential_gene_type    
+            gene_type = self._get_gene_type_from_gene_info(gene_name)
             
             # Use known prefix
-            elif gene_name[0:3] == 'PIR' or gene_name[0:3] == 'MIR':
+            if (gene_type is None and 
+               (re.match('^RF[0-9]{5}', gene_name) or
+                re.match('^HSALNG[0-9]+', gene_name) or
+                re.match('^(M|m|P|p)(I|i)(R|r)', gene_name) or
+                re.match('^(L|l)(N|n)(C|c)', gene_name) or
+                re.match('^[A-Z]{2}[0-9-]+$', gene_name) or
+                re.match('^5[A-Z0-9]{3}_', gene_name) or
+                re.match('^hsa-miR-[0-9-]+', gene_name) or 
+                re.match('^NONHSAG[0-9-.]+$', gene_name) or 
+                re.match('^(L|Z)[0-9-]+', gene_name) or
+                re.match('^SNOR[A-Z0-9-]+$', gene_name))): #Given exceptions in genetypes file
                 gene_type = 'ncRNA gene'
 
         if gene_type is None:
@@ -631,9 +695,7 @@ class NDExGeneHancerLoader(object):
         return None
 
     def _get_rep(self, id):
-        if id in GENEHANCER_IDS_THAT_DONT_EXIST:
-            return ''
-        if re.match('^GH([0-9]{2}|MT)[A-Z][0-9]+', id):
+        if re.match('^GH([0-9]{2}|MT|0X|0Y)[A-Z][0-9]+', id):
             return EN_GENECARDS + id
         else:
             return P_GENECARDS + id
@@ -645,44 +707,40 @@ class NDExGeneHancerLoader(object):
         dataframe = pd.read_csv(csv_file_path,
                                 dtype=str,
                                 na_filter=False,
-                                delimiter=',',
+                                sep=",",
                                 engine='python')
         network = t2n.convert_pandas_to_nice_cx_with_load_plan(dataframe, self._load_plan)
         return network
 
     def _add_network_attributes(self, network, original_name):
-        network.set_name(original_name)
-        network.set_network_attribute(
-            NETWORK_DESCRIPTION_ATTRIBUTE, 
-            NETWORK_DESCRIPTION.
-            format(network_name=original_name)) 
-        network.set_network_attribute(
-            NETWORK_REFERENCE_ATTRIBUTE, 
-            NETWORK_REFERENCE) 
-        network.set_network_attribute(
-            NETWORK_TYPE_ATTRIBUTE, 
-            NETWORK_TYPE, 
-            type=LIST_OF_STRING)
-        network.set_network_attribute(
-            NETWORK_ICON_URL_ATTRIBUTE,
-            NETWORK_ICON_URL)
-        network.set_network_attribute(
-            NETWORK_GENERATED_BY_ATTRIBUTE,
-            NETWORK_GENERATED_BY.
-            format(version=ndexgenehancerloader.__version__))
-        network.set_network_attribute(
-            NETWORK_DERIVED_FROM_ATTRIBUTE,
-            NETWORK_DERIVED_FROM
-        )
+        if self._network_attributes is None:
+            self._get_network_attributes()
+        
+        has_name = False
+        for attribute_name, attribute_object in self._network_attributes.items():
+            if attribute_name == 'name':
+                network.set_name(attribute_object[ATTRIBUTE])
+                has_name = True
+            elif attribute_name == 'prov:wasGeneratedBy':
+                network.set_network_attribute(
+                    attribute_name, 
+                    attribute_object[ATTRIBUTE].format(version=ndexgenehancerloader.__version__),
+                    type=STRING
+                )
+            else:
+                network.set_network_attribute(
+                    attribute_name, 
+                    attribute_object[ATTRIBUTE], 
+                    type=attribute_object[TYPE] if TYPE in attribute_object else STRING
+                )
+        
+        if not has_name:
+            network.set_name(original_name)
 
     def _add_network_style(self, network):
         if self._style_network is None:
             self._get_style_network()
-        try:
-            network.apply_style_from_network(self._style_network)
-        except Exception as e:
-            print('Error while applying network style')
-            print(e)
+        network.apply_style_from_network(self._style_network)
         
     def _write_cx_to_file(self, network, original_name):
         cx_file_path = self._get_file_path(RESULT_PREFIX + original_name + ".cx")
@@ -690,11 +748,16 @@ class NDExGeneHancerLoader(object):
             json.dump(network.to_cx(), f, indent=4)
         return cx_file_path
 
+    def _write_gene_type_to_file(self, original_name):
+        gene_type_file_path = self._get_file_path(GENE_TYPES_PREFIX + original_name + ".json")
+        with open(gene_type_file_path, 'w') as f:
+            json.dump(self._internal_gene_types, f, indent=4)
+        return gene_type_file_path
+
     def _upload_cx(self, cx_file_path, original_name):
-        network_UUID = self._network_summaries.get(original_name.upper())
         with open(cx_file_path, 'rb') as network_out:
             try:
-                if network_UUID is None:
+                if self._update_uuid is None:
                     print('{} - started uploading "{}" on {} for user {}...'.
                           format(str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                                  original_name, 
@@ -706,13 +769,13 @@ class NDExGeneHancerLoader(object):
                                  original_name, 
                                  self._server, 
                                  self._user))
-                else :
+                else:
                     print('{} - started updating "{}" on {} for user {}...'.
                           format(str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), 
                                  original_name,
                                  self._server, 
                                  self._user))
-                    self._ndex.update_cx_network(network_out, network_UUID)
+                    self._ndex.update_cx_network(network_out, self._update_uuid)
                     print('{} - finished updating "{}" on {} for user {}'.
                           format(str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), 
                                  original_name,
@@ -729,37 +792,39 @@ class NDExGeneHancerLoader(object):
         return 0 
 
     def run(self):
-        try:
-            """
-            Runs content loading for NDEx GeneHancer Content Loader
-            :param theargs:
-            :return:
-            """
-            # Setup
-            self._parse_config()
+        """
+        Runs content loading for NDEx GeneHancer Content Loader
+        :param theargs:
+        :return:
+        """
+        # Setup
+        self._parse_config()
 
-            # Check for data
-            data_dir_exists = self._data_directory_exists()
-            if data_dir_exists is False:
-                print('Data directory does not exist')
-                return 2
+        # Check for data
+        data_dir_exists = self._data_directory_exists()
+        if data_dir_exists is False:
+            print('Data directory does not exist')
+            return 2
 
-            #Connect to ndex
-            self._create_ndex_connection()
-            status_code = self._load_network_summaries_for_user()
-            if status_code != 0:
-                return status_code
+        #Connect to ndex
+        self._create_ndex_connection()
+        if self._ndex is None:
+            print("Error occured while connecting to ndex")
+            return 2
 
-            # Turn data into network
-            if len(os.listdir(self._data_directory)) == 0:
-                print("No files found in directory: {}".format(self._data_directory))
-                return 2
+        # Turn data into network
+        if len(os.listdir(self._data_directory)) == 0:
+            print("No files found in directory: {}".format(self._data_directory))
+            return 2
 
-            else:
-                for file_name in os.listdir(self._data_directory):
+        else:
+            for file_name in os.listdir(self._data_directory):
+                try:
                     # Skip files that result from this process
                     if (file_name.startswith(RESULT_PREFIX) or 
-                        file_name.startswith(INTERMEDIARY_PREFIX)):
+                        file_name.startswith(INTERMEDIARY_PREFIX) or
+                        file_name.startswith(GENE_TYPES_PREFIX) or
+                        file_name.startswith('.')):
                         continue
 
                     print('\n{} - started processing "{}"...'.
@@ -767,18 +832,20 @@ class NDExGeneHancerLoader(object):
                                 file_name))
                     original_name = self._get_original_name(file_name)
                     
-                    # Check if file conversion is necessary
+                    # Check for file type
                     file_is_xl = self._file_is_xl(file_name)
                     if file_is_xl:
                         xl_file_path = self._get_file_path(file_name)
                         csv_file_path = self._convert_from_xl_to_csv(xl_file_path, 
                                                                     original_name)
                     else:
+                        self._find_delimiter(file_name)
                         csv_file_path = self._get_file_path(file_name)
                     
                     # Reformat csv into network
-                    result_csv_file_path = self._reformat_csv_file(csv_file_path, 
-                                                                original_name)
+                    result_csv_file_path = self._reformat_csv_file(
+                        csv_file_path, 
+                        original_name)
                     # Make and modify network
                     network = self._generate_nice_cx_from_csv(result_csv_file_path)
                     self._add_network_attributes(network, original_name)
@@ -787,18 +854,22 @@ class NDExGeneHancerLoader(object):
                     
                     # Upload network
                     return_value = self._upload_cx(cx_file_path, original_name)
-                    if return_value == 2:
-                        continue # Skip cleanup
 
-                    #Clean up directory
-                    if not self._no_cleanup:
-                        if file_is_xl:
-                            os.remove(csv_file_path)
-                        os.remove(result_csv_file_path)
-                        os.remove(cx_file_path)
-            return 0          
-        except Exception as e:
-            print(e)
+                    if return_value == 0:
+                        #Clean up directory
+                        if self._no_cleanup:
+                            if self._internal_gene_types is not None:
+                                self._write_gene_type_to_file(original_name)
+                        else:
+                            if file_is_xl:
+                                os.remove(csv_file_path)
+                            os.remove(result_csv_file_path)
+                            os.remove(cx_file_path)
+                    return 0
+
+                except Exception:
+                    print(traceback.format_exc())
+                    return 2                    
 
 def main(args):
     """
@@ -832,7 +903,6 @@ def main(args):
     theargs = _parse_arguments(desc, args[1:])
     theargs.program = args[0]
     theargs.version = ndexgenehancerloader.__version__
-
     try:
         _setup_logging(theargs)
         loader = NDExGeneHancerLoader(theargs)

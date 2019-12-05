@@ -1,0 +1,40 @@
+{
+    "name": {
+        "attribute": "GeneHancer Associations"
+    },
+    "description": {
+        "attribute": "<p><a href=\"https://www.genecards.org/Guide/GeneCard#enhancers\" target=\"\">GeneHancer </a>is a database of genome-wide enhancer-to-gene and promoter-to-gene associations, embedded in GeneCards, with regulatory elements mined from several sources.</p><p><b>Free for academic non-profit institutions. Other users need a <a href=\"http://www.lifemapsc.com/contact-us/\" target=\"\">Commercial license</a>.</b></p><p>- Enhancers are represented by orange octagons and their size is proportional to the \"EnhancerConfidenceScore\" value.<br>- Protein-coding genes are represented by rectangles with a blue border, RNA genes have a purple border while other genes have grey borders as described in the original paper.<br>- Edge width is mapped to the \"GeneHancerScore\" value.</p>",
+        "type": "string"
+    },
+    "reference": {
+       "attribute": "<p>Fishilevich S, Nudel R, Rappaport N, et al. GeneHancer: genome-wide     integration of enhancers and target genes in GeneCards. <em>Database (Oxford).</em> 2017;2017:bax028. <a href=\"http://doi.org/10.1093/database/bax028\" target=\"_blank\">doi:10.1093/database/bax028</a></p>",
+       "type": "string"
+    },
+    "networkType" : {
+        "attribute": [
+        "interactome",
+        "geneassociation"
+        ],
+        "type": "list_of_string"
+    },
+    "__iconurl": {
+        "attribute": "https://www.genecards.org/Images/Companions/Logo_GH.png",
+        "type": "string"
+    },
+    "prov:wasGeneratedBy": {
+        "attribute": "<a href=\"https://github.com/ndexcontent/ndexgenehancerloader\" target=\"_blank\">ndexgenehancerloader {version} </a>",
+        "type": "string"
+    },
+    "rights": {
+        "attribute": "<a href=\"http://www.lifemapsc.com/contact-us/\" target=\"_blank\">Free for academic non-profit institutions. Other users need a Commercial license.",
+        "type": "string"
+    },
+    "rightsHolder": {
+        "attribute": "LifeMap Sciences",
+        "type": "string"
+    },
+    "organism": {
+        "attribute": "Human, 9606, Homo sapiens",
+        "type": "string"
+    }
+}
