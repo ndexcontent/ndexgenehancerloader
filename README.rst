@@ -145,7 +145,7 @@ The default path for this configuration is :code:`~/.ndexutils.conf` but can be 
 Required files
 ------------
 
-The original GeneHancer data (in .xl* or .csv format) must be present in the data directory (:code:`genehancer_data` by default) 
+The original GeneHancer data (in .xl*, comma separated, or tab separated format) must be present in the data directory (:code:`genehancer_data` by default) 
 
 
 Usage
