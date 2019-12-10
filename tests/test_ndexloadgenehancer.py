@@ -61,7 +61,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
             'styleprofile': None,
             'profile': None,
             'logconf': None,
-            'verbose': 0,
+            'verbose': 2,
             'noheader': None,
             'nocleanup': None
         }
@@ -70,6 +70,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
         self._password = 'test12345'
         self._server = 'dev.ndexbio.org'
         self._test_network_uuid = '2ee6d4f9-0afb-11ea-8612-525400c25d22'
+        self._test_style_network_uuid = '243fca04-17ae-11ea-a0f6-525400c25d22'
 
         self._ndex_client = Ndex2(host=self._server, 
                                   username=self._user,
@@ -138,6 +139,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
         self.assertEqual(actual_path, expected_path)
 
     def test_parse_arguments(self):
+        self.maxDiff = None
         desc = """
         Version {version}
         Loads NDEx GeneHancer Content Loader data into NDEx (http://ndexbio.org).
@@ -168,8 +170,8 @@ class TestNdexgenehancerloader(unittest.TestCase):
         expected_default_args['conf'] = ndexloadgenehancer._get_default_configuration_name()
         expected_default_args['profile'] = 'ndexgenehancerloader'
         expected_default_args['styleprofile'] = None
-        expected_default_args['genetypes'] = ndexloadgenehancer._get_default_gene_types_name()
-        expected_default_args['networkattributes'] = ndexloadgenehancer._get_default_network_attributes_name()
+        expected_default_args['genetypes'] = None
+        expected_default_args['networkattributes'] = None
         expected_default_args['delimiter'] = None
         expected_default_args['logconf'] = None
         expected_default_args['verbose'] = 0
@@ -550,7 +552,9 @@ class TestNdexgenehancerloader(unittest.TestCase):
         self.assertIsNotNone(loader._gene_types)
 
     def test_get_gene_types_error(self):
+        ndexloadgenehancer._setup_logging(self._args)
         loader = NDExGeneHancerLoader(self._args)
+
         loader.__setattr__('_gene_types_file', 'file')
         with captured_output() as (out, err):
             loader._get_gene_types()
@@ -562,11 +566,42 @@ class TestNdexgenehancerloader(unittest.TestCase):
             self.assertIsNotNone(loader._gene_types)
 
     def test_get_network_attributes(self):
+        # Setup
+        attributes = {
+            "name": "attribute"
+        }
+        attributes_file = os.path.join(self._args['datadir'], 'attributes_file')
+        with open(attributes_file, 'w') as af:
+            json.dump(attributes, af, indent=4)
+
+        # Test default
+        loader = NDExGeneHancerLoader(self._args)
+        loader._get_network_attributes()
+        self.assertEqual(
+            loader._network_attributes_file, 
+            ndexloadgenehancer._get_default_network_attributes_name())
+        self.assertIsNotNone(loader._network_attributes)
+
+        # Test with file
+        args = {
+            'datadir': 'dir',
+            'networkattributes': attributes_file
+        }
+        args = dotdict(args)
+        loader = NDExGeneHancerLoader(args)
+        loader._get_network_attributes()
+        self.assertEqual(loader._network_attributes['name'], 'attribute')
+
+    def test_get_network_attributes_version(self):
         loader = NDExGeneHancerLoader(self._args)
         loader._network_attributes_file = ndexloadgenehancer._get_default_network_attributes_name()
+        loader._version = 'version'
 
         loader._get_network_attributes()
-        self.assertIsNotNone(loader._network_attributes)
+        version = {
+            "attribute": 'version'
+        }
+        self.assertEqual(loader._network_attributes['version'], version)
 
     def test_get_network_attributes_from_uuid(self):
         loader = NDExGeneHancerLoader(self._args)
@@ -590,52 +625,33 @@ class TestNdexgenehancerloader(unittest.TestCase):
     def test_get_style_network(self):
         # Setup
         loader = NDExGeneHancerLoader(self._args)
-        loader.__setattr__('_style_server', self._server)
-        loader.__setattr__('_style_user', self._user)
-        loader.__setattr__('_style_pass', self._password)
-        loader.__setattr__('_style_uuid', self._test_network_uuid)
 
-        # Test file and profile are none (use file)
+        # Test nothing is defined (use file)
         loader._get_style_network()
-        self.assertEqual(loader._style_file, ndexloadgenehancer._get_default_style_file_name())
-        self.assertIsNotNone(loader._style_network)
-        self.assertNotEqual(len(loader._style_network.get_nodes()), 4)
+        self.assertEqual(len(loader._style_network.get_nodes()), 13)
 
-        # Test file is none (use profile)
-        loader.__setattr__('_style_network', None)
+        # Test just uuid is defined (use uuid)
         loader.__setattr__('_style_file', None)
-        loader.__setattr__('_style_profile', True)
-        loader._get_style_network()
-        self.assertIsNotNone(loader._style_network)
-        self.assertEqual(len(loader._style_network.get_nodes()), 4)
-
-        # Test profile is none (use file)
-        loader.__setattr__('_style_network', None)
-        loader.__setattr__('_style_profile', None)
-        loader.__setattr__('_style_file', ndexloadgenehancer._get_default_style_file_name())
-        loader._get_style_network()
-        self.assertIsNotNone(loader._style_network)
-        self.assertNotEqual(len(loader._style_network.get_nodes()), 4)
-
-        # Test neither are none (use file)
-        loader.__setattr__('_style_network', None)
-        loader.__setattr__('_style_profile', True)
-        loader._get_style_network()
-        self.assertIsNotNone(loader._style_network)
-        self.assertNotEqual(len(loader._style_network.get_nodes()), 4)
-
-        # Test update_uuid is not none (use network)
-        loader.__setattr__('_style_network', None)
-        loader.__setattr__('_style_profile', None)
-        loader.__setattr__('_style_network', None)
-        loader.__setattr__('_style_server', 'fake_server')
-        loader.__setattr__('_update_uuid', self._test_network_uuid)
         loader.__setattr__('_server', self._server)
         loader.__setattr__('_user', self._user)
         loader.__setattr__('_pass', self._password)
+        loader.__setattr__('_update_uuid', self._test_network_uuid)
         loader._get_style_network()
-        self.assertIsNotNone(loader._style_network)
         self.assertEqual(len(loader._style_network.get_nodes()), 4)
+
+        # Test uuid and profile are defined (use profile)
+        loader.__setattr__('_style_profile', True)
+        loader.__setattr__('_style_server', self._server)
+        loader.__setattr__('_style_user', self._user)
+        loader.__setattr__('_style_pass', self._password)
+        loader.__setattr__('_style_uuid', self._test_style_network_uuid)
+        loader._get_style_network()
+        self.assertEqual(len(loader._style_network.get_nodes()), 1)
+
+        # Test uuid, profile, and file are all defined (use file)
+        loader.__setattr__('_style_file', ndexloadgenehancer._get_default_style_file_name())
+        loader._get_style_network()
+        self.assertEqual(len(loader._style_network.get_nodes()), 13)
 
     def test_get_style_network_from_file(self):
         loader = NDExGeneHancerLoader(self._args)
@@ -690,7 +706,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
                 out.getvalue().strip(),
                 "Server and uuid not specified"
                 "\nError while loading style network from NDEx. "
-                "Default style network will be used instead."
+                "Default style will be used instead."
             )
             self.assertIsNotNone(loader._style_network)
 
@@ -730,6 +746,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
             "EndLocation",
             "EnhancerConfidenceScore",
             "EnhancerType",
+            "EnhancerEnhancerType",
             "Gene",
             "GeneRep",
             "GeneEnhancerScore",
@@ -896,7 +913,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
                     writer.writerow([
                         'chr' + str(i),
                         'GeneHancer',
-                        'Enhancer',
+                        'Enhancer' + str(i),
                         str(i),
                         str(i) + '000',
                         '0.' + str(i),
@@ -910,7 +927,8 @@ class TestNdexgenehancerloader(unittest.TestCase):
             loader.__setattr__('_delimiter', ',')
             loader.__setattr__('_no_header', True)
             result_csv_file_path = loader._reformat_csv_file(test_csv_file_path, 
-                                                             'test_csv_file')
+                                                             'test_csv_file',
+                                                             'test_csv_file_name')
 
             # Check for correctness
             with open(result_csv_file_path, 'r') as result_csv:
@@ -927,6 +945,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
                             "EndLocation",
                             "EnhancerConfidenceScore",
                             "EnhancerType",
+                            "EnhancerEnhancerType",
                             "Gene",
                             "GeneRep",
                             "GeneEnhancerScore",
@@ -943,6 +962,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
                             str(i) + '000',
                             '0.' + str(i),
                             'enhancer',
+                            'Enhancer' + str(i),
                             'fakegene:' + alphabet[i-1] + '-' + alphabet[j],
                             'p-genecards:fakegene:' + alphabet[i-1] + '-' + alphabet[j],
                             str(i) + '.' + str(j),
@@ -991,7 +1011,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
                         '0.' + str(i),
                         str(i) + '000',
                         str(i),
-                        'Enhancer',
+                        'Enhancer' + str(i),
                         'GeneHancer',
                         'chr' + str(i)
                     ])
@@ -1000,7 +1020,8 @@ class TestNdexgenehancerloader(unittest.TestCase):
             loader = NDExGeneHancerLoader(self._args)
             loader.__setattr__('_delimiter', ',')
             result_csv_file_path = loader._reformat_csv_file(test_csv_file_path, 
-                                                             'test_csv_file')
+                                                             'test_csv_file',
+                                                             'test_csv_file_name')
 
             # Check for correctness
             with open(result_csv_file_path, 'r') as result_csv:
@@ -1017,6 +1038,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
                             "EndLocation",
                             "EnhancerConfidenceScore",
                             "EnhancerType",
+                            "EnhancerEnhancerType",
                             "Gene",
                             "GeneRep",
                             "GeneEnhancerScore",
@@ -1033,6 +1055,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
                             str(i) + '000',
                             '0.' + str(i),
                             'enhancer',
+                            'Enhancer' + str(i),
                             'fakegene:' + alphabet[i-1] + '-' + alphabet[j],
                             'p-genecards:fakegene:' + alphabet[i-1] + '-' + alphabet[j],
                             str(i) + '.' + str(j),
@@ -1103,6 +1126,65 @@ class TestNdexgenehancerloader(unittest.TestCase):
         self.assertEqual(loader._get_gene_type_from_gene_info('ENSG00000230882'), 'Other gene')
 
         self.assertIsNone(loader._get_gene_type_from_gene_info('not_a_gene'))
+
+    def test_update_gene_types(self):
+        # Setup
+        loader = NDExGeneHancerLoader(self._args)
+        loader._gene_types = {}
+        loader._internal_gene_types = {}
+        
+        # Do not update
+        loader._update_gene_types = False
+        loader._get_gene_type('B')
+        self.assertTrue('B' in loader._internal_gene_types)
+        self.assertFalse('B' in loader._gene_types)
+
+        # Update
+        loader._update_gene_types = True
+        loader._get_gene_type('C')
+        self.assertFalse('C' in loader._internal_gene_types)
+        self.assertTrue('C' in loader._gene_types)
+
+    def test_write_gene_type_to_file_cases(self):
+        # Setup
+        loader = NDExGeneHancerLoader(self._args)
+        gene_types = {"gene": "type"}
+        internal_gene_types = {"internal_gene": "internal_type"}
+        gene_types_file = os.path.join(self._args['datadir'], 'types')
+
+        # Update gene types, but gene types failed to load
+        loader._update_gene_types = True
+        loader._gene_types = None
+        return_value = loader._write_gene_type_to_file('')
+        self.assertIsNone(return_value)
+
+        # Update gene types
+        loader._gene_types = gene_types
+        loader._gene_types_file = gene_types_file
+        return_value = loader._write_gene_type_to_file('')
+        self.assertEqual(gene_types_file, return_value)
+        with open(gene_types_file, 'r') as gt:
+            new_gene_types = json.load(gt)
+        self.assertEqual(new_gene_types, gene_types)
+
+        # Write new gene types, but there are none
+        loader._update_gene_types = False
+        loader._internal_gene_types = None
+        return_value = loader._write_gene_type_to_file('')
+        self.assertIsNone(return_value)
+
+        # Write new gene types
+        loader._data_directory = self._args['datadir']
+        loader._internal_gene_types = internal_gene_types
+        return_value = loader._write_gene_type_to_file('name')
+        self.assertEqual(
+            os.path.realpath(os.path.join(
+                self._args['datadir'], 
+                ndexloadgenehancer.GENE_TYPES_PREFIX + 'name.json')),
+            return_value)
+        with open(return_value, 'r') as gt:
+            new_internal_gene_types = json.load(gt)
+        self.assertEqual(new_internal_gene_types, internal_gene_types)
 
     def test_map_gene_type(self):
         loader = NDExGeneHancerLoader(self._args)
@@ -1191,10 +1273,11 @@ class TestNdexgenehancerloader(unittest.TestCase):
                 "type": "list_of_double"
             }
         }
-        with open('network_attributes.json', 'w') as f:
+        na_file = os.path.join(self._args['datadir'], 'attribs.json')
+        with open(na_file, 'w') as f:
             json.dump(attributes, f, indent=4)
 
-        loader.__setattr__('_network_attributes_file', 'network_attributes.json')
+        loader.__setattr__('_network_attributes_file', na_file)
         loader._add_network_attributes(network, "network_name")
 
         # Test
@@ -1387,6 +1470,58 @@ class TestNdexgenehancerloader(unittest.TestCase):
         pass
     def test_main(self):
         pass
+
+    def test_parse_gene_types(self):
+        # Setup
+        genetypes = {
+            "gene": "type"
+        }
+        gene_types_file = os.path.join(self._args['datadir'], 'types.json')
+        with open(gene_types_file, 'w') as gt:
+            json.dump(genetypes, gt, indent=4)
+
+        # Input gene types file (do not update)
+        args = {
+            "genetypes": gene_types_file,
+            "datadir": "dir"
+        }
+        args = dotdict(args)
+        loader = NDExGeneHancerLoader(args)
+        loader._get_gene_types()
+        self.assertFalse(loader._update_gene_types)
+        self.assertEqual(loader._gene_types_file, gene_types_file)
+        self.assertEqual(loader._gene_types['gene'], 'type')
+
+        # Default gene types file (do update)
+        args = {
+            "datadir": "dir"
+        }
+        args = dotdict(args)
+        loader = NDExGeneHancerLoader(args)
+        loader._get_gene_types()
+        self.assertTrue(loader._update_gene_types)
+        self.assertEqual(
+            loader._gene_types_file, 
+            ndexloadgenehancer._get_default_gene_types_name())
+
+        # Input invalid gene types file (do update)
+        args = {
+            "genetypes": "",
+            "datadir": "dir"
+        }
+        args = dotdict(args)
+        loader = NDExGeneHancerLoader(args)
+        with captured_output() as (out, err):
+            loader._get_gene_types()
+        self.assertEqual(
+            out.getvalue().strip(),
+            "[Errno 2] No such file or directory: ''\n"
+            "Error while loading gene types. "
+            "Default gene types will be used instead.")
+        self.assertTrue(loader._update_gene_types)
+        self.assertEqual(
+            loader._gene_types_file, 
+            ndexloadgenehancer._get_default_gene_types_name())
 
 if __name__ == '__main__':
     unittest.main()

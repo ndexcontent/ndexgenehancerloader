@@ -27,6 +27,10 @@
             {
                 "column_name": "EnhancerType",
                 "attribute_name": "type"
+            },
+            {
+                "column_name": "EnhancerEnhancerType",
+                "attribute_name": "EnhancerType"
             }
         ]
     },
