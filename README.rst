@@ -36,6 +36,7 @@ Reformating the Data
 The `original GeneHancer data <https://academic.oup.com/database/article/doi/10.1093/database/bax028/3737828>`_, which is a list of enhancers and the genes that they affect, contains 9 columns. 5 of these columns are used to transform the data into a network in the form of an edge table:
 
 * **chrom**: The chromosome that the enhancer is found on (eg. chr2)
+* **feature name**: The type of enhancer, either "Enhancer" or "Promoter/Enhancer"
 * **start**: The start location of the enhancer on the chromosome (eg. 70017801)
 * **end**: The end location of the enhancer on the chromosome (eg. 70018000)
 * **score**: The enhancer confidence score, which represents the strength of the evidence supporting the existence of the enhancer (eg. 0.52)
@@ -57,20 +58,21 @@ In addition to the properties above, nodes also have an ID, and target nodes (ge
 
 These values are determined by parsing the name of the gene, by examining the "genetypes.json" file which is available by default, or through a query on mygene.info. When the type of a gene cannot be determined in these ways, the Gene Type is set to "Other gene" by default.
 
-+-------------------------+-----------------------------------------------+----------------------------------------------+
-|                         | Name                                          | Properties                                   |
-+=========================+===============================================+==============================================+
-| Source node (enhancer)  | **genehancer_id**                             | * ID                                         |
-|                         |                                               | * **chrom**                                  |
-|                         |                                               | * **start**                                  |
-|                         |                                               | * **end**                                    |
-|                         |                                               | * **score** (enhancer confidence score)      |
-+-------------------------+-----------------------------------------------+----------------------------------------------+
-| Target node (gene)      | **connected_gene**                            | * ID                                         |
-|                         |                                               | * Gene Type                                  |
-+-------------------------+-----------------------------------------------+----------------------------------------------+
-| Edge (enhancer to gene) | **genehancer_id** enhances **connected_gene** | * **score** (gene-enhancer confidence score) |
-+-------------------------+-----------------------------------------------+----------------------------------------------+
++-------------------------+-----------------------------------------------+------------------------------------------------------------------+
+|                         | Name                                          | Properties                                                       |
++=========================+===============================================+==================================================================+
+| Source node (enhancer)  | **genehancer_id**                             | * ID: en-genehancer:**genehancer_id**                            |
+|                         |                                               | * Chromosome: **chrom**                                          |
+|                         |                                               | * EnhancerType: **feature name**                                 |
+|                         |                                               | * StartLocation: **start**                                       |
+|                         |                                               | * EndLocation: **end**                                           |
+|                         |                                               | * EnhancerConfidenceScore: **score** (enhancer confidence score) |
++-------------------------+-----------------------------------------------+------------------------------------------------------------------+
+| Target node (gene)      | **connected_gene**                            | * ID: p-genehancer:**connected_gene**                            |
+|                         |                                               | * GeneType: Gene Type                                            |
++-------------------------+-----------------------------------------------+------------------------------------------------------------------+
+| Edge (enhancer to gene) | **genehancer_id** enhances **connected_gene** | * GeneEnhancerScore: **score** (gene-enhancer confidence score)  |
++-------------------------+-----------------------------------------------+------------------------------------------------------------------+
 
 Once the network is created, the following network attributes are set by default:
 
