@@ -194,7 +194,7 @@ Optionally, a profile containing the credentials to access a network whose style
 Required files
 ------------
 
-The original GeneHancer data (in .xl*, comma separated, or tab separated format) must be present in the data directory (:code:`genehancer_data` by default). Ensure that there are no other files not produced by this script in the data directory, as the script is designed to upload one network at a time. 
+The original GeneHancer data (in .xl*, comma separated, or tab separated format) must be present in the data directory (:code:`genehancer_data` by default). **Ensure that there are no other files not produced by this script in the data directory**, as the script is designed to upload one network at a time. 
 
 
 Usage
@@ -210,7 +210,7 @@ This example assumes that there is a valid configuration file at :code:`~/.ndexu
 
    ndexloadgenehancer.py
    
-This example will update the network at the uuid <uuid> with the new version number <version>, using the data in the directory <data directory>, using tabs as a delimiter. It will do this without changing the visibility of the network, the uuid, or any network attributes besides the version number. It will also keep all intermediary files created during the loading process, which can be useful in case the loading fails at a late stage.
+This example will update the network at the uuid <uuid> with the new version number <version>, using the data in the directory <data directory>, using tabs as a delimiter. It will do this without changing the visibility of the network, the uuid, or any network attributes besides the version number. It will also keep all intermediary files created during the loading process, which can be useful in case the loading fails at a late stage. 
 
 .. code-block::
     
