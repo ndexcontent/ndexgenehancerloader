@@ -108,7 +108,6 @@ Dependencies
 
 * `ndex2 <https://pypi.org/project/ndex2>`_
 * `ndexutil <https://pypi.org/project/ndexutil>`_
-* `csv <https://pypi.org/project/csv/>`_
 * `mygene <https://pypi.org/project/mygene/>`_
 * `pandas <https://pypi.org/project/pandas/>`_
 * `xlrd <https://pypi.org/project/xlrd/>`_
