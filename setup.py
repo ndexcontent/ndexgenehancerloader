@@ -19,11 +19,14 @@ with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
 requirements = ['ndex2',
-                'ndexutil']
+                'ndexutil',
+                'xlrd',
+                'mygene',
+                'pandas']
 
-setup_requirements = ['pytest-runner', ]
+setup_requirements = []
 
-test_requirements = ['pytest', ]
+test_requirements = ['xlwt']
 
 setup(
     author="Sophie Liu",
