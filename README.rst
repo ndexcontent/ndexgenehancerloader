@@ -125,6 +125,8 @@ Compatibility
 Installation
 ------------
 
+On the command line, type:
+
 .. code-block::
 
    git clone https://github.com/ceofy/ndexgenehancerloader
