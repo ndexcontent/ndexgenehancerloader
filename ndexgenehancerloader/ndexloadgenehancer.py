@@ -540,19 +540,19 @@ class NDExGeneHancerLoader(object):
             return True
         return False
 
-    def _convert_from_xl_to_csv(self, file_path, original_name):
+    def _convert_from_xl_to_tsv(self, file_path, original_name):
         workbook = xlrd.open_workbook(file_path)
         sheet = workbook.sheet_by_index(0)
 
-        new_csv_file_path = self._get_file_path(INTERMEDIARY_PREFIX + original_name + ".csv")
+        new_csv_file_path = self._get_file_path(INTERMEDIARY_PREFIX + original_name + ".tsv")
         new_csv_file = open(new_csv_file_path, 'w')
-        wr = csv.writer(new_csv_file, quoting=csv.QUOTE_ALL)
+        wr = csv.writer(new_csv_file, quoting=csv.QUOTE_ALL, delimiter='\t')
 
         for row_num in range(sheet.nrows):
             wr.writerow(sheet.row_values(row_num))
 
         new_csv_file.close()
-        self._delimiter = ','
+        self._delimiter = '\t'
         return new_csv_file_path
 
     def _create_ndex_connection(self):

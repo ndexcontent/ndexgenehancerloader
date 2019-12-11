@@ -819,7 +819,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
         for file in non_xl_files:
             self.assertFalse(loader._file_is_xl(file))
 
-    def test_convert_from_xl_to_csv(self):
+    def test_convert_from_xl_to_tsv(self):
         # Setup
         wb_file = os.path.join(self._args['datadir'], 'wb.xls') 
         wb = Workbook()
@@ -832,16 +832,16 @@ class TestNdexgenehancerloader(unittest.TestCase):
 
         # Convert
         loader = NDExGeneHancerLoader(self._args)
-        csv_file = loader._convert_from_xl_to_csv(wb_file, 'file_name')
+        csv_file = loader._convert_from_xl_to_tsv(wb_file, 'file_name')
 
         # Test
         self.assertEqual(csv_file,
             os.path.realpath(os.path.join(
                 self._args['datadir'], 
-                ndexloadgenehancer.INTERMEDIARY_PREFIX + 'file_name.csv')))
+                ndexloadgenehancer.INTERMEDIARY_PREFIX + 'file_name.tsv')))
         
         with open(csv_file, 'r') as cf:
-            reader = csv.reader(cf, delimiter=',')
+            reader = csv.reader(cf, delimiter='\t')
             for i, line in enumerate(reader):
                 for j in range(len(line)):
                     self.assertEqual(line[j], alphabet[i] + alphabet[j])
