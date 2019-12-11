@@ -54,7 +54,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
         """Set up test fixtures, if any"""
         self._args = {
             'datadir': tempfile.mkdtemp(),
-            'genetypes': ndexloadgenehancer._get_default_gene_types_name(),
+            'genetypes': None,
             'conf': None,
             'loadplan': None,
             'style': None,
@@ -71,6 +71,31 @@ class TestNdexgenehancerloader(unittest.TestCase):
         self._server = 'dev.ndexbio.org'
         self._test_network_uuid = '2ee6d4f9-0afb-11ea-8612-525400c25d22'
         self._test_style_network_uuid = '243fca04-17ae-11ea-a0f6-525400c25d22'
+        self._test_run_network_uuid = 'ad628754-1c48-11ea-a0f6-525400c25d22'
+        self._test_run_network_tsv = [
+            [
+                '#chrom',
+                'source',
+                'feature name',
+                'start',
+                'end',
+                'score',
+                'strand',
+                'frame',
+                'attributes'
+            ],
+            [
+                'chr9',
+                'GeneHancer',
+                'Enhancer',
+                '19918392',
+                '19918459',
+                '0.18',
+                '.',
+                '.',
+                'genehancer_id=GH09J019918;connected_gene=ENSG00000261402;score=5.67;connected_gene=piR-47211-673;score=0.39'
+            ]
+        ]
 
         self._ndex_client = Ndex2(host=self._server, 
                                   username=self._user,
@@ -297,7 +322,6 @@ class TestNdexgenehancerloader(unittest.TestCase):
         self.assertEqual(loader._style_profile, 'my_style_profile')
         self.assertIsNone(loader._style_network)
         self.assertIsNone(loader._gene_types)
-        self.assertIsNone(loader._load_plan)
         self.assertIsNone(loader._user)
         self.assertIsNone(loader._pass)
         self.assertIsNone(loader._server)
@@ -401,7 +425,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
     
     def test_parse_style_config(self):
         # Set up variables
-        self._args['conf'] = 'test_conf'#os.path.join(self._args['datadir'], 'test_conf')
+        self._args['conf'] = os.path.join(self._args['datadir'], 'test_conf')
         self._args['styleprofile'] = 'style'
 
         # Test working config
@@ -525,25 +549,6 @@ class TestNdexgenehancerloader(unittest.TestCase):
         actual_path = loader._get_file_path('file')
         self.assertEqual(expected_path, actual_path)
 
-    def test_get_load_plan(self):
-        loader = NDExGeneHancerLoader(self._args)
-        loader._load_plan_file = ndexloadgenehancer._get_default_load_plan_name()
-        
-        loader._get_load_plan()
-        self.assertIsNotNone(loader._load_plan)
-
-    def test_get_load_plan_error(self):
-        loader = NDExGeneHancerLoader(self._args)
-        loader.__setattr__('_load_plan_file', 'file')
-        with captured_output() as (out, err):
-            loader._get_load_plan()
-            self.assertEqual(
-                out.getvalue().strip(), 
-                "[Errno 2] No such file or directory: 'file'"
-                "\nError while loading load plan. "
-                "Default load plan will be used instead.")
-            self.assertIsNotNone(loader._load_plan)
-
     def test_get_gene_types(self):
         loader = NDExGeneHancerLoader(self._args)
         loader._gene_types_file = ndexloadgenehancer._get_default_gene_types_name()
@@ -568,7 +573,12 @@ class TestNdexgenehancerloader(unittest.TestCase):
     def test_get_network_attributes(self):
         # Setup
         attributes = {
-            "name": "attribute"
+            "attributes": [
+                {
+                    "n": "name",
+                    "v": "value"
+                }
+            ]
         }
         attributes_file = os.path.join(self._args['datadir'], 'attributes_file')
         with open(attributes_file, 'w') as af:
@@ -590,7 +600,7 @@ class TestNdexgenehancerloader(unittest.TestCase):
         args = dotdict(args)
         loader = NDExGeneHancerLoader(args)
         loader._get_network_attributes()
-        self.assertEqual(loader._network_attributes['name'], 'attribute')
+        self.assertEqual(loader._network_attributes, attributes['attributes'])
 
     def test_get_network_attributes_version(self):
         loader = NDExGeneHancerLoader(self._args)
@@ -598,10 +608,32 @@ class TestNdexgenehancerloader(unittest.TestCase):
         loader._version = 'version'
 
         loader._get_network_attributes()
-        version = {
-            "attribute": 'version'
-        }
-        self.assertEqual(loader._network_attributes['version'], version)
+        found = False
+        for attribute in loader._network_attributes:
+            if attribute['n'] is 'version':
+                self.assertEqual(attribute['v'], 'version')
+                found = True
+        self.assertTrue(found)
+
+        loader._version = 'new_version'
+        network_attributes_file = os.path.join(self._args['datadir'], 'attrib')
+        with open(network_attributes_file, 'w') as naf:
+            json.dump({
+                "attributes": [
+                    {
+                        "n": "version",
+                        "v": "old_version"
+                    }
+                ]
+            }, naf)
+        loader._network_attributes_file = network_attributes_file
+        loader._get_network_attributes()
+        found = False
+        for attribute in loader._network_attributes:
+            if attribute['n'] == 'version':
+                self.assertEqual(attribute['v'], 'new_version')
+                found = True
+        self.assertTrue(found)
 
     def test_get_network_attributes_from_uuid(self):
         loader = NDExGeneHancerLoader(self._args)
@@ -831,72 +863,10 @@ class TestNdexgenehancerloader(unittest.TestCase):
             ndex_connection.get_network_summaries_for_user(self._user)
         except Exception as e:
             self.fail("Exception while getting network summaries " + e)
-
-    """
-    def test_load_network_summaries_for_user(self):
-        # Clean up in case delete "delete_me" network failed
-        # in test_upload_cx
-        network_summaries = self._ndex_client.get_network_summaries_for_user(self._user)
-        uuid = None
-        for summary in network_summaries:
-            if summary.get('name') == 'delete_me':
-                uuid = summary.get('externalId')
-                returnString = self._ndex_client.delete_network(uuid, retry=10)
-
-        loader = NDExGeneHancerLoader(self._args)
-        loader.__setattr__('_user', self._user)
-        loader.__setattr__('_ndex', self._ndex_client)
-
-        self.assertEqual(loader._load_network_summaries_for_user(), 0)
-        self.maxDiff = None
-        expected_summaries = {
-            "BIOGRID: PROTEIN-CHEMICAL INTERACTIONS (H. SAPIENS)" : 
-                "c7cfc125-fcf1-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (A. THALIANA)" :
-                "c47d61d2-fcf1-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (C. ELEGANS)" :
-                "ad0562ef-fcf1-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (D. RERIO)" :
-                "a2836a1b-fcf1-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (D. MELANOGASTER)" :
-                "a1e68dd9-fcf1-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (H. SAPIENS)" :
-                "815526d6-fcf1-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (HIV-1)" :
-                "b68b16d1-fcf0-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (HIV-2)" :
-                "b5c9747f-fcf0-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (HPV)" :
-                "b5baa76d-fcf0-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (M. MUSCULUS)" :
-                "b567574b-fcf0-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (R. NORVEGICUS)" :
-                "9e779b37-fcf0-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (S. CEREVISIAE)" :
-                "975ff685-fcf0-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (X. LAEVIS)" :
-                "c59dcd2d-fcee-11e9-93e0-525400c25d22",
-            "BIOGRID: PROTEIN-PROTEIN INTERACTIONS (Z. MAYS)" :
-                "c4eb1efb-fcee-11e9-93e0-525400c25d22",
-            "TEST" : self._test_network_uuid
-        }
-
-        actual_summaries = loader.__getattribute__('_network_summaries')
-        self.assertEqual(actual_summaries, expected_summaries)
     
-    def test_load_network_summaries_for_user_error(self):
-        loader = NDExGeneHancerLoader(self._args)
-        with captured_output() as (out, err):
-            status = loader._load_network_summaries_for_user()
-            self.assertEqual(status, 2)
-            self.assertEqual(
-                out.getvalue().strip(),
-                "'NoneType' object has no attribute 'get_network_summaries_for_user'"
-            )
-    """
-    def test_reformat_csv_file_no_header(self):
+    def test_reformat_input_file_no_header(self):
         try:
-            # Make test csv file
+            # Make test tsv file
             test_csv_file_path = os.path.join(self._args['datadir'], 'test.csv')
             with open(test_csv_file_path, 'w') as test_csv:
                 writer = csv.writer(test_csv)
@@ -926,13 +896,13 @@ class TestNdexgenehancerloader(unittest.TestCase):
             loader = NDExGeneHancerLoader(self._args)
             loader.__setattr__('_delimiter', ',')
             loader.__setattr__('_no_header', True)
-            result_csv_file_path = loader._reformat_csv_file(test_csv_file_path, 
+            result_tsv_file_path = loader._reformat_input_file(test_csv_file_path, 
                                                              'test_csv_file',
                                                              'test_csv_file_name')
 
             # Check for correctness
-            with open(result_csv_file_path, 'r') as result_csv:
-                reader = csv.reader(result_csv, delimiter=',')
+            with open(result_tsv_file_path, 'r') as result_tsv:
+                reader = csv.reader(result_tsv, delimiter='\t')
                 i = 1
                 j = 0
                 for k, line in enumerate(reader):
@@ -975,9 +945,9 @@ class TestNdexgenehancerloader(unittest.TestCase):
                             j = 0
                         self.assertEqual(line, expected_row)
         except Exception as e:
-            self.fail('Exception during test_reformat_csv_file ' + str(e))
+            self.fail('Exception during test_reformat_input_file ' + str(e))
     
-    def test_reformat_csv_file_header(self):
+    def test_reformat_input_file_header(self):
         try:
             # Make test csv file
             test_csv_file_path = os.path.join(self._args['datadir'], 'test.csv')
@@ -1019,13 +989,13 @@ class TestNdexgenehancerloader(unittest.TestCase):
             # Execute function that is being tested
             loader = NDExGeneHancerLoader(self._args)
             loader.__setattr__('_delimiter', ',')
-            result_csv_file_path = loader._reformat_csv_file(test_csv_file_path, 
+            result_tsv_file_path = loader._reformat_input_file(test_csv_file_path, 
                                                              'test_csv_file',
                                                              'test_csv_file_name')
 
             # Check for correctness
-            with open(result_csv_file_path, 'r') as result_csv:
-                reader = csv.reader(result_csv, delimiter=',')
+            with open(result_tsv_file_path, 'r') as result_tsv:
+                reader = csv.reader(result_tsv, delimiter='\t')
                 i = 1
                 j = 0
                 for k, line in enumerate(reader):
@@ -1070,7 +1040,8 @@ class TestNdexgenehancerloader(unittest.TestCase):
         except Exception as e:
             self.fail('Exception during test_reformat_csv_file ' + str(e))
 
-    def test_get_gene_type(self):
+    def test_get_gene_type_no_update(self):
+        self._args['genetypes'] = 'file'
         loader = NDExGeneHancerLoader(self._args)
         loader._gene_types = {
             'gene_types_gene' : 'gene_types_gene_type'
@@ -1113,6 +1084,50 @@ class TestNdexgenehancerloader(unittest.TestCase):
             'not_a_gene' : 'Other gene'
         }
         self.assertEqual(actual_internal_gene_types, expected_internal_gene_types)
+
+    def test_get_gene_type_update(self):
+        loader = NDExGeneHancerLoader(self._args)
+        loader._gene_types = {
+            'gene_types_gene' : 'gene_types_gene_type'
+        }
+        loader._internal_gene_types = {
+            'internal_gene_types_gene' : 'internal_gene_types_gene_type'
+        }
+
+        self.assertEqual(
+            loader._get_gene_type('gene_types_gene'), 
+            'gene_types_gene_type')
+        self.assertEqual(
+            loader._get_gene_type('internal_gene_types_gene'), 
+            'internal_gene_types_gene_type')
+
+        self.assertEqual(loader._get_gene_type('LINC00649'), 'ncRNA gene')
+        self.assertEqual(loader._get_gene_type('LOC105379194'), 'ncRNA gene')
+        self.assertEqual(loader._get_gene_type('GC12M047038'), 'ncRNA gene')
+
+        self.assertEqual(loader._get_gene_type('ENSG00000083622'), 'ncRNA gene')
+        self.assertEqual(loader._get_gene_type('ENSG00000100101'), 'Protein coding gene')
+        self.assertEqual(loader._get_gene_type('ENSG00000108516'), 'Other gene')
+
+        self.assertEqual(loader._get_gene_type('PIR58695'), 'ncRNA gene')
+        self.assertEqual(loader._get_gene_type('MIR6081'), 'ncRNA gene')
+
+        self.assertEqual(loader._get_gene_type('not_a_gene'), 'Other gene')
+
+        actual_gene_types = loader._gene_types
+        expected_gene_types = {
+            'gene_types_gene' : 'gene_types_gene_type',
+            'LINC00649' : 'ncRNA gene',
+            'LOC105379194' : 'ncRNA gene',
+            'GC12M047038' : 'ncRNA gene',
+            'ENSG00000083622' : 'ncRNA gene',
+            'ENSG00000100101' : 'Protein coding gene',
+            'ENSG00000108516' : 'Other gene',
+            'PIR58695' : 'ncRNA gene',
+            'MIR6081' : 'ncRNA gene',
+            'not_a_gene' : 'Other gene'
+        }
+        self.assertEqual(actual_gene_types, expected_gene_types)
 
     def test_get_gene_type_from_gene_info(self):
         loader = NDExGeneHancerLoader(self._args)
@@ -1216,154 +1231,29 @@ class TestNdexgenehancerloader(unittest.TestCase):
         self.assertEqual(loader._get_rep('GH01F220777'), ndexloadgenehancer.EN_GENECARDS + 'GH01F220777')
         self.assertEqual(loader._get_rep('other'), ndexloadgenehancer.P_GENECARDS + 'other')
 
-    def test_generate_nice_cx_from_csv(self):
+    def test_generate_nice_cx_from_tsv(self):
         loader = NDExGeneHancerLoader(self._args)
-
-        # Check if _get_load_plan is being called
-        try:
-            with captured_output() as (out, err):
-                loader._generate_nice_cx_from_csv('file')
-            self.fail()
-        except:
-            self.assertIsNotNone(loader.__getattribute__('_load_plan'))
-
-        # Check if network is being returned
-        loader._load_plan = self._load_plan
-        csv_file = os.path.join(self._args['datadir'], 'file.csv')
-        with open(csv_file, 'w') as cf:
-            writer = csv.writer(cf)
+        tsv_file = os.path.join(self._args['datadir'], 'file.csv')
+        load_plan_file = os.path.join(self._args['datadir'], 'loadplan.json')
+        with open(load_plan_file, 'w') as lpf:
+            json.dump(self._load_plan, lpf, indent=4)
+        loader._load_plan_file = load_plan_file
+        
+        with open(tsv_file, 'w') as tf:
+            writer = csv.writer(tf, delimiter='\t')
             writer.writerow(self._network_data_header)
             writer.writerows(self._network_data)
-        try:
-            network = loader._generate_nice_cx_from_csv(csv_file)
-            self.assertIsInstance(network, ndex2.nice_cx_network.NiceCXNetwork)
-        except:
-            self.fail()
-    
-    def test_add_network_attributes(self):
-        #Setup
-        loader = NDExGeneHancerLoader(self._args)
-        network_dataframe = pd.DataFrame(self._network_data, columns = self._network_data_header)
-        network = t2n.convert_pandas_to_nice_cx_with_load_plan(network_dataframe, self._load_plan)
-        
-        attributes = {
-            "description": {
-                "attribute": "new_description",
-                "type": "string"
-            },
-            "reference": {
-                "attribute": "new_reference"
-            },
-            "version": {
-                "attribute": "1",
-                "type": "double"
-            },
-            "networkType": {
-                "attribute": [
-                    "type1",
-                    "type2"
-                ],
-                "type": "list_of_string"
-            },
-            "organism": {
-                "attribute": [
-                    1, 
-                    2
-                ],
-                "type": "list_of_double"
-            }
-        }
-        na_file = os.path.join(self._args['datadir'], 'attribs.json')
-        with open(na_file, 'w') as f:
-            json.dump(attributes, f, indent=4)
 
-        loader.__setattr__('_network_attributes_file', na_file)
-        loader._add_network_attributes(network, "network_name")
-
-        # Test
-        self.assertEqual(network.get_name(), 'network_name')
-        expected_description = {
-            'n': 'description',
-            'v': 'new_description',
-            'd': 'string'
-        }
-        self.assertEqual(network.get_network_attribute('description'), expected_description)
-        expected_reference = {
-            'n': 'reference',
-            'v': 'new_reference',
-            'd': 'string'
-        }
-        self.assertEqual(network.get_network_attribute('reference'), expected_reference)
-        expected_version = {
-            'n': 'version',
-            'v': '1',
-            'd': 'double'
-        }
-        self.assertEqual(network.get_network_attribute('version'), expected_version)
-        expected_network_type = {
-            'n': 'networkType',
-            'v': ['type1', 'type2'],
-            'd': 'list_of_string'
-        }
-        self.assertEqual(network.get_network_attribute('networkType'), expected_network_type)
-        expected_organism = {
-            'n': 'organism',
-            'v': [1, 2],
-            'd': 'list_of_double'
-        }
-        self.assertEqual(network.get_network_attribute('organism'), expected_organism)
-
-        # Setup
-        network = t2n.convert_pandas_to_nice_cx_with_load_plan(network_dataframe, self._load_plan)
-
-        attributes = {
-            "name": {
-                "attribute": "new_name",
-                'type': 'double'
-            },
-            "prov:wasGeneratedBy": {
-                'attribute': 'My version is {version}',
-                'type': 'double'
-            }
-        }
-
-        loader.__setattr__('_network_attributes', attributes)
-        loader._add_network_attributes(network, 'network_name')
-        
-        # Test
-        self.assertEqual(network.get_name(), 'new_name')
-        expected_prov = {
-            'n': 'prov:wasGeneratedBy',
-            'v': 'My version is ' + str(ndexgenehancerloader.__version__),
-            'd': 'string'
-        }
-        self.assertEqual(network.get_network_attribute('prov:wasGeneratedBy'), expected_prov)
-        
-    def test_add_network_style(self):
-        loader = NDExGeneHancerLoader(self._args)
-        network_dataframe = pd.DataFrame(self._network_data, columns = self._network_data_header)
-        network = t2n.convert_pandas_to_nice_cx_with_load_plan(network_dataframe, self._load_plan)
-        
-        # Check that _get_style_network is being called
-        self.assertIsNone(loader._style_network)
-        loader._add_network_style(network)
-        self.assertIsNotNone(loader._style_network)
-
-    def test_write_cx_to_file(self):
-        loader = NDExGeneHancerLoader(self._args)
-        ndexloadgenehancer._setup_logging(self._args)
-        network_dataframe = pd.DataFrame(self._network_data, columns = self._network_data_header)
-        network = t2n.convert_pandas_to_nice_cx_with_load_plan(network_dataframe, self._load_plan)
-        
-        with captured_output() as (out, err):
-            network_path = loader._write_cx_to_file(network, 'network_name')
+        cx_file_path = loader._generate_nice_cx_from_tsv(tsv_file, 'file')
         self.assertEqual(
-            network_path, 
-            os.path.realpath(
+            cx_file_path,
+            os.path.realpath( 
                 os.path.join(
                     self._args['datadir'], 
-                    ndexloadgenehancer.RESULT_PREFIX + 'network_name.cx')))
-
+                    ndexloadgenehancer.RESULT_PREFIX + 'file.cx')))
+        self.assertIsNotNone(loader.__getattribute__('_network_attributes'))
+        self.assertIsNotNone(loader.__getattribute__('_style_network'))
+    
     def test_write_gene_type_to_file(self):
         gene_type = {
             'A': '1',
@@ -1466,11 +1356,6 @@ class TestNdexgenehancerloader(unittest.TestCase):
                 uuid = summary.get('externalId')
                 returnString = self._ndex_client.delete_network(uuid, retry=10)
 
-    def test_run(self):
-        pass
-    def test_main(self):
-        pass
-
     def test_parse_gene_types(self):
         # Setup
         genetypes = {
@@ -1522,6 +1407,93 @@ class TestNdexgenehancerloader(unittest.TestCase):
         self.assertEqual(
             loader._gene_types_file, 
             ndexloadgenehancer._get_default_gene_types_name())
+
+    def test_run(self):
+        # Set up
+        new_network_uuid = None
+
+        uuids = self._ndex_client.get_network_ids_for_user(self._user)
+        if len(uuids) > 3:
+            for i in range(0, len(uuids)):
+                if (uuids[i] == self._test_network_uuid or
+                    uuids[i] == self._test_style_network_uuid or
+                    uuids[i] == self._test_run_network_uuid):
+                    continue
+                else:
+                    self._ndex_client.delete_network(uuids[i], retry=10)
+
+        input_file = os.path.join(self._args['datadir'], 'input')
+        with open(input_file, 'w') as ipf:
+            writer = csv.writer(ipf, delimiter='\t')
+            writer.writerows(self._test_run_network_tsv)
+
+        conf_file = os.path.join('.conf')#self._args['datadir'], '.conf')
+        profile = 'profile'
+        with open(conf_file, 'w') as cf:
+            cf.write('[' + profile + ']\n')
+            cf.write('user = ' + self._user + '\n')
+            cf.write('password = ' + self._password + '\n')
+            cf.write('server = ' + self._server)
+            cf.flush()
+
+        args = {
+            'datadir': self._args['datadir'],
+            'conf': conf_file,
+            'profile': profile,
+            'loadplan': ndexloadgenehancer._get_default_load_plan_name(),
+            'genetypes': ndexloadgenehancer._get_default_gene_types_name()
+        }
+        args = dotdict(args)
+
+        # Run function
+        loader = NDExGeneHancerLoader(args)
+        try:
+            with captured_output() as (out, err):
+                loader.run()
+
+            # Test results
+            lines = out.getvalue().strip().split('\n')
+            self.assertEqual(
+                lines[0].strip().split(' - ')[1], 
+                'started processing "input"...')
+            self.assertEqual(
+                lines[1].strip().split(' - ')[1], 
+                'generating network...')
+            self.assertEqual(
+                lines[2].strip().split(' - ')[1], 
+                'started uploading "input" on dev.ndexbio.org for user sophieTest...')
+            self.assertEqual(
+                lines[3].strip().split(' - ')[1], 
+                'finished uploading "input" on dev.ndexbio.org for user sophieTest')
+            
+            uuids = self._ndex_client.get_network_ids_for_user(self._user)
+            self.assertEqual(len(uuids), 4)
+
+            for i in range(0, 4):
+                if (uuids[i] == self._test_network_uuid or
+                    uuids[i] == self._test_style_network_uuid or
+                    uuids[i] == self._test_run_network_uuid):
+                    continue
+                else:
+                    break
+            
+            new_network_uuid = uuids[i]
+
+            new_network = self._ndex_client.get_network_as_cx_stream(new_network_uuid).json()
+            old_network = self._ndex_client.get_network_as_cx_stream(self._test_run_network_uuid).json()
+            self.assertEqual(new_network, old_network)
+
+        # Tear down
+        finally:
+            uuids = self._ndex_client.get_network_ids_for_user(self._user)
+            if len(uuids) > 3:
+                for i in range(0, len(uuids)):
+                    if (uuids[i] == self._test_network_uuid or
+                        uuids[i] == self._test_style_network_uuid or
+                        uuids[i] == self._test_run_network_uuid):
+                        continue
+                    else:
+                        self._ndex_client.delete_network(uuids[i], retry=10)
 
 if __name__ == '__main__':
     unittest.main()

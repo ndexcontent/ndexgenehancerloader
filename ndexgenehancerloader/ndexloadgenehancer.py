@@ -2,6 +2,7 @@
 
 import argparse
 from copy import deepcopy
+import csv
 from datetime import datetime
 import json
 import logging
@@ -11,15 +12,13 @@ import re
 import sys
 import traceback
 
-import bigjson
-import csv
 import mygene
 import pandas as pd
 import xlrd
 
 import ndex2
 from ndex2.client import Ndex2
-import ndexutil.tsv.tsv2nicecx2 as t2n
+from ndexutil.tsv.streamtsvloader import StreamTSVLoader
 from ndexutil.config import NDExUtilConfig
 import ndexgenehancerloader
 
@@ -262,7 +261,7 @@ def _parse_arguments(desc, args):
     parser.add_argument(
         '--delimiter',
         default=None,
-        help='Delimiter of the data file. (For tab enter the following: $\'\\t\')'
+        help='Delimiter of the data file. (Default: \'comma\' for .csv files, \'tab\' otherwise)'
     )
     parser.add_argument(
         '--logconf', 
@@ -346,7 +345,6 @@ class NDExGeneHancerLoader(object):
         
         self._style_network = None
         self._gene_types = None
-        self._load_plan = None
         self._network_attributes = None
 
         self._profile = args.profile
@@ -407,24 +405,13 @@ class NDExGeneHancerLoader(object):
     
     def _find_delimiter(self, file_name):
         if self._delimiter is None:
-            if file_name.split('.')[-1] == 'tsv':
-                self._delimiter = '\t'
-            else:
+            if file_name.split('.')[-1] == 'csv':
                 self._delimiter = ','
+            else:
+                self._delimiter = '\t'
 
     def _get_file_path(self, file_name):
         return _get_path(os.path.join(self._data_directory, file_name))
-
-    def _get_load_plan(self):
-        try:
-            with open(self._load_plan_file, 'r') as lp:
-                self._load_plan = json.load(lp)
-        except Exception as e:
-            print(e)
-            print("Error while loading load plan. "
-                  "Default load plan will be used instead.")
-            with open(_get_default_load_plan_name(), 'r') as lp:
-                self._load_plan = json.load(lp)
 
     def _get_gene_types(self):
         try:
@@ -449,36 +436,39 @@ class NDExGeneHancerLoader(object):
             self._get_network_attributes_from_file()
 
         if self._version is not None:
-            if 'version' in self._network_attributes:
-                self._network_attributes['version']['attribute'] = self._version
-            else:
+            found = False
+            for attribute in self._network_attributes:
+                if attribute['n'] == 'version':
+                    found = True
+                    attribute['v'] = self._version
+                    break
+            if not found:
                 version = {
-                    "attribute": self._version
+                    "n": "version",
+                    "v": self._version
                 }
-                self._network_attributes['version'] = version
+                self._network_attributes.append(version)
 
     def _get_network_attributes_from_file(self):
         try:
             with open(self._network_attributes_file, 'r') as na:
-                self._network_attributes = json.load(na)
+                attributes_object = json.load(na)
+                self._network_attributes = attributes_object['attributes']
         except Exception as e:
             print(e)
             print("Error while loading network attributes. "
                   "Default network attributes will be used instead.")
             with open(_get_default_network_attributes_name(), 'r') as na:
-                self._network_attributes = json.load(na)
+                attributes_object = json.load(na)
+                self._network_attributes = attributes_object['attributes']
 
     def _get_network_attributes_from_uuid(self):
         response = self._ndex.get_network_as_cx_stream(self._update_uuid)
         network = ndex2.create_nice_cx_from_raw_cx(response.json())
         names = network.get_network_attribute_names()
-        network_attributes = {}
+        network_attributes = []
         for name in names:
-            attribute = network.get_network_attribute(name)
-            network_attributes[name] = {
-                "attribute": attribute['v'],
-                "type": attribute['d'] if 'd' in attribute else STRING
-            }
+            network_attributes.append(network.get_network_attribute(name))
         self._network_attributes = network_attributes
 
     def _get_style_network(self):
@@ -575,18 +565,18 @@ class NDExGeneHancerLoader(object):
                                password=self._pass)
         return self._ndex
 
-    def _reformat_csv_file(self, csv_file_path, original_name, file_name):
+    def _reformat_input_file(self, csv_file_path, original_name, file_name):
         if self._gene_types is None:
             self._get_gene_types()
         if not self._update_gene_types and self._internal_gene_types is None:
             self._internal_gene_types = {}
         try:
-            result_csv_file_path = self._get_file_path(RESULT_PREFIX + original_name + ".csv")
+            result_tsv_file_path = self._get_file_path(RESULT_PREFIX + original_name + ".tsv")
 
             with open(csv_file_path, 'r', encoding='utf-8-sig') as read_file:
                 reader = csv.reader(read_file, delimiter=self._delimiter)
-                with open(result_csv_file_path, 'w') as write_file:
-                    writer = csv.writer(write_file)
+                with open(result_tsv_file_path, 'w') as write_file:
+                    writer = csv.writer(write_file, delimiter='\t')
                     writer.writerow(self._get_output_header())
 
                     for i, line in enumerate(reader):
@@ -601,7 +591,7 @@ class NDExGeneHancerLoader(object):
                                 str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), 
                                 str(i), 
                                 file_name))
-                            
+
                         attributes = line[header.index('attributes')].split(";")
 
                         #Find enhancer attributes
@@ -643,16 +633,16 @@ class NDExGeneHancerLoader(object):
                                 GENE,
                                 gene_gene_type
                             ])
-            return result_csv_file_path
+            return result_tsv_file_path
         except Exception as e:
             print(traceback.format_exc())
             print(e)
 
     def _get_gene_type(self, gene_name):
         # Match known genes
-        if gene_name in self._gene_types:
+        if self._gene_types is not None and gene_name in self._gene_types:
             return self._gene_types[gene_name]
-        if not self._update_gene_types and gene_name in self._internal_gene_types:
+        if self._internal_gene_types is not None and gene_name in self._internal_gene_types:
             return self._internal_gene_types[gene_name]    
 
         gene_type = None
@@ -724,55 +714,21 @@ class NDExGeneHancerLoader(object):
         else:
             return P_GENECARDS + id
 
-
-    def _generate_nice_cx_from_csv(self, csv_file_path):
-        if self._load_plan is None:
-            self._get_load_plan()
-        dataframe = pd.read_csv(csv_file_path,
-                                dtype=str,
-                                na_filter=False,
-                                sep=",",
-                                engine='python')
-        network = t2n.convert_pandas_to_nice_cx_with_load_plan(dataframe, self._load_plan)
-        return network
-
-    def _add_network_attributes(self, network, original_name):
+    def _generate_nice_cx_from_tsv(self, tsv_file_path, original_name):
         if self._network_attributes is None:
             self._get_network_attributes()
-        
-        has_name = False
-        for attribute_name, attribute_object in self._network_attributes.items():
-            if attribute_name == 'name':
-                network.set_name(attribute_object[ATTRIBUTE])
-                has_name = True
-            elif attribute_name == 'prov:wasGeneratedBy':
-                network.set_network_attribute(
-                    attribute_name, 
-                    attribute_object[ATTRIBUTE].format(version=ndexgenehancerloader.__version__),
-                    type=STRING
-                )
-            else:
-                network.set_network_attribute(
-                    attribute_name, 
-                    attribute_object[ATTRIBUTE], 
-                    type=attribute_object[TYPE] if TYPE in attribute_object else STRING
-                )
-        
-        if not has_name:
-            network.set_name(original_name)
-        
-        return network.get_name()
-
-    def _add_network_style(self, network):
         if self._style_network is None:
             self._get_style_network()
-        network.apply_style_from_network(self._style_network)
-        
-    def _write_cx_to_file(self, network, original_name):
-        cx_file_path = self._get_file_path(RESULT_PREFIX + original_name + ".cx")
-        with open(cx_file_path, 'w') as f:
-            json.dump(network.to_cx(), f, indent=4)
+
+        cx_file_path = self._get_cx_file_path(original_name)
+        with open(tsv_file_path, 'r') as tsv_file:
+            with open(cx_file_path, 'w') as cx_file:
+                loader = StreamTSVLoader(self._load_plan_file, self._style_network)
+                loader.write_cx_network(tsv_file, cx_file, self._network_attributes)
         return cx_file_path
+
+    def _get_cx_file_path(self, original_name):
+        return self._get_file_path(RESULT_PREFIX + original_name + ".cx")
 
     def _write_gene_type_to_file(self, original_name):
         if self._update_gene_types and self._gene_types is not None:
@@ -785,38 +741,38 @@ class NDExGeneHancerLoader(object):
                 json.dump(self._internal_gene_types, f, indent=4)
             return gene_type_file_path
 
-    def _upload_cx(self, cx_file_path, network_name):
+    def _upload_cx(self, cx_file_path, network_file_name):
         with open(cx_file_path, 'rb') as network_out:
             try:
                 if self._update_uuid is None:
                     print('{} - started uploading "{}" on {} for user {}...'.
                           format(str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-                                 network_name, 
+                                 network_file_name, 
                                  self._server, 
                                  self._user))
                     self._ndex.save_cx_stream_as_new_network(network_out)
                     print('{} - finished uploading "{}" on {} for user {}'.
                           format(str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-                                 network_name, 
+                                 network_file_name, 
                                  self._server, 
                                  self._user))
                 else:
                     print('{} - started updating "{}" on {} for user {}...'.
                           format(str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), 
-                                 network_name,
+                                 network_file_name,
                                  self._server, 
                                  self._user))
                     self._ndex.update_cx_network(network_out, self._update_uuid)
                     print('{} - finished updating "{}" on {} for user {}'.
                           format(str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), 
-                                 network_name,
+                                 network_file_name,
                                  self._server, 
                                  self._user))
 
             except Exception as e:
                 print('{} - unable to update or upload "{}" on {} for user {}'.
                       format(str(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), 
-                             network_name,
+                             network_file_name,
                              self._server, 
                              self._user))
                 return 2
@@ -877,20 +833,20 @@ class NDExGeneHancerLoader(object):
                             csv_file_path = self._get_file_path(file_name)
                         
                         # Reformat csv into network
-                        result_csv_file_path = self._reformat_csv_file(
+                        result_tsv_file_path = self._reformat_input_file(
                             csv_file_path, 
                             original_name,
                             file_name)
+
                         # Make and modify network
                         print('{} - generating network...'.format(
                             str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))))
-                        network = self._generate_nice_cx_from_csv(result_csv_file_path)
-                        network_name = self._add_network_attributes(network, original_name)
-                        self._add_network_style(network)
-                        cx_file_path = self._write_cx_to_file(network, original_name)
+                        cx_file_path = self._generate_nice_cx_from_tsv(
+                            result_tsv_file_path, 
+                            original_name)
                         
                         # Upload network
-                        return_value = self._upload_cx(cx_file_path, network_name)
+                        return_value = self._upload_cx(cx_file_path, file_name)
 
                     except Exception as e:
                         print(e)
@@ -906,7 +862,7 @@ class NDExGeneHancerLoader(object):
                                 else:
                                     if file_is_xl:
                                         os.remove(csv_file_path)
-                                    os.remove(result_csv_file_path)
+                                    os.remove(result_tsv_file_path)
                                     os.remove(cx_file_path)
                             else:
                                 self._write_gene_type_to_file('')
