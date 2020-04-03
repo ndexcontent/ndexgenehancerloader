@@ -129,7 +129,7 @@ On the command line, type:
 
 .. code-block::
 
-   git clone https://github.com/ceofy/ndexgenehancerloader
+   git clone https://github.com/ndexcontent/ndexgenehancerloader.git
    cd ndexgenehancerloader
    make dist
    pip install dist/ndexloadgenehancer*whl
