@@ -2,21 +2,26 @@
 NDEx GeneHancer Content Loader
 ==============================
 
-
-.. image:: https://img.shields.io/pypi/v/ndexgenehancerloader.svg
-        :target: https://pypi.python.org/pypi/ndexgenehancerloader
-
-.. image:: https://img.shields.io/travis/ceofy/ndexgenehancerloader.svg
-        :target: https://travis-ci.org/ceofy/ndexgenehancerloader
-
-.. image:: https://readthedocs.org/projects/ndexgenehancerloader/badge/?version=latest
-        :target: https://ndexgenehancerloader.readthedocs.io/en/latest/?badge=latest
-        :alt: Documentation Status
-
-
-
-
 Python application that loads the GeneHancer database to NDEx
+
+Quick Start
+-----------
+
+On the command line, type:
+
+.. code-block::
+
+   git clone https://github.com/ndexcontent/ndexgenehancerloader.git
+   cd ndexgenehancerloader
+   make dist
+   pip install dist/ndexloadgenehancer*whl
+   ndexloadgenehancer.py --help
+   
+Then, execute the `ndexloadgenehancer.py` command again with the appropriate options.
+   
+   
+Description
+-----------
 
 This tool takes GeneHancer data in .xl*, tab separated, or comma separated format and performs the following operations:
 
@@ -159,7 +164,7 @@ The default path for this configuration is :code:`/.ndexutils.conf` but can be o
     [ndexgenehancerloader]
     user = joe123
     password = somepassword123
-    server = dev.ndexbio.org
+    server = ndexbio.org
     
 Optionally, a profile containing the credentials to access a network whose style should be copied into the uploading network can also be specified.
 
@@ -188,7 +193,7 @@ Optionally, a profile containing the credentials to access a network whose style
     
     user = joe123
     password = somepassword123
-    server = dev.ndexbio.org
+    server = ndexbio.org
     
     [style]
     
